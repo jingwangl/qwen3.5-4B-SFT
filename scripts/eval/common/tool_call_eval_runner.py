@@ -7,12 +7,10 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from scripts.utils.common import load_json_file, save_json_file
 from scripts.utils.tool_call_eval_utils import (
-    calls_equal_ordered,
-    calls_equal_unordered,
     choose_examples,
+    evaluate_tool_call_prediction,
     generate_one,
     get_torch_dtype,
-    names_equal_unordered,
     summarize_results,
 )
 
@@ -105,6 +103,7 @@ def evaluate_examples(config: ToolCallEvalConfigLike, examples, model, tokenizer
             temperature=config.temperature,
         )
         gold_calls = example.gold_calls
+        metrics = evaluate_tool_call_prediction(predicted_calls, gold_calls, generated_text)
         record = {
             "dataset_index": example.index,
             "query": example.query,
@@ -112,18 +111,15 @@ def evaluate_examples(config: ToolCallEvalConfigLike, examples, model, tokenizer
             "gold_calls": gold_calls,
             "predicted_text": generated_text,
             "predicted_calls": predicted_calls,
-            "ordered_exact_match": calls_equal_ordered(predicted_calls, gold_calls),
-            "unordered_exact_match": calls_equal_unordered(predicted_calls, gold_calls),
-            "unordered_name_match": names_equal_unordered(predicted_calls, gold_calls),
-            "tool_count_match": len(predicted_calls) == len(gold_calls),
+            **metrics,
         }
         results.append(record)
         progress_bar.set_postfix(
             sample=f"{index}/{len(examples)}",
             idx=example.index,
-            ordered=record["ordered_exact_match"],
-            unordered=record["unordered_exact_match"],
-            name=record["unordered_name_match"],
+            json=record["valid_json_object"],
+            func=record["function_selection_correct"],
+            kv=record["kv_exact_match"],
         )
 
     return results

@@ -1,6 +1,7 @@
 import json
 import random
 import re
+from collections import Counter
 from dataclasses import dataclass
 from typing import Any
 
@@ -93,6 +94,10 @@ def maybe_decode_json_scalar(raw: str) -> Any:
 
 
 def parse_tool_calls(text: str) -> list[dict[str, Any]]:
+    valid_json, json_calls = parse_json_tool_calls(text)
+    if valid_json:
+        return json_calls
+
     calls: list[dict[str, Any]] = []
     for function_name, body in TOOL_CALL_PATTERN.findall(text):
         arguments: dict[str, Any] = {}
@@ -100,6 +105,73 @@ def parse_tool_calls(text: str) -> list[dict[str, Any]]:
             arguments[param_name.strip()] = maybe_decode_json_scalar(raw_value)
         calls.append({"name": function_name.strip(), "arguments": arguments})
     return calls
+
+
+def parse_json_tool_calls(text: str) -> tuple[bool, list[dict[str, Any]]]:
+    stripped = text.strip()
+    if not stripped:
+        return False, []
+
+    try:
+        payload = json.loads(stripped)
+    except json.JSONDecodeError:
+        return False, []
+
+    return True, normalize_json_tool_calls(payload)
+
+
+def normalize_json_tool_calls(payload: Any) -> list[dict[str, Any]]:
+    if isinstance(payload, dict):
+        if "tool_calls" in payload:
+            tool_calls = payload.get("tool_calls")
+            if isinstance(tool_calls, list):
+                return [
+                    normalized
+                    for item in tool_calls
+                    if (normalized := normalize_json_tool_call(item)) is not None
+                ]
+            return []
+
+        normalized = normalize_json_tool_call(payload)
+        return [normalized] if normalized is not None else []
+
+    if isinstance(payload, list):
+        return [
+            normalized
+            for item in payload
+            if (normalized := normalize_json_tool_call(item)) is not None
+        ]
+
+    return []
+
+
+def normalize_json_tool_call(payload: Any) -> dict[str, Any] | None:
+    if not isinstance(payload, dict):
+        return None
+
+    if "name" in payload:
+        name = payload.get("name")
+        arguments = payload.get("arguments", {})
+    elif isinstance(payload.get("function"), dict):
+        function_payload = payload["function"]
+        name = function_payload.get("name")
+        arguments = function_payload.get("arguments", {})
+    else:
+        return None
+
+    if not isinstance(name, str) or not name.strip():
+        return None
+
+    if isinstance(arguments, str):
+        try:
+            arguments = json.loads(arguments)
+        except json.JSONDecodeError:
+            pass
+
+    return {
+        "name": name.strip(),
+        "arguments": arguments,
+    }
 
 
 def canonicalize_scalar(value: Any) -> Any:
@@ -141,6 +213,10 @@ def canonicalize_call(call: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def serialize_call(call: dict[str, Any]) -> str:
+    return json.dumps(call, ensure_ascii=False, sort_keys=True)
+
+
 def calls_equal_ordered(predicted: list[dict[str, Any]], gold: list[dict[str, Any]]) -> bool:
     pred_norm = [canonicalize_call(call) for call in predicted]
     gold_norm = [canonicalize_call(call) for call in gold]
@@ -148,14 +224,8 @@ def calls_equal_ordered(predicted: list[dict[str, Any]], gold: list[dict[str, An
 
 
 def calls_equal_unordered(predicted: list[dict[str, Any]], gold: list[dict[str, Any]]) -> bool:
-    pred_norm = sorted(
-        json.dumps(canonicalize_call(call), ensure_ascii=False, sort_keys=True)
-        for call in predicted
-    )
-    gold_norm = sorted(
-        json.dumps(canonicalize_call(call), ensure_ascii=False, sort_keys=True)
-        for call in gold
-    )
+    pred_norm = sorted(serialize_call(canonicalize_call(call)) for call in predicted)
+    gold_norm = sorted(serialize_call(canonicalize_call(call)) for call in gold)
     return pred_norm == gold_norm
 
 
@@ -163,6 +233,59 @@ def names_equal_unordered(predicted: list[dict[str, Any]], gold: list[dict[str, 
     pred_names = sorted(call["name"] for call in predicted)
     gold_names = sorted(call["name"] for call in gold)
     return pred_names == gold_names
+
+
+def extract_unparsed_text(text: str) -> str:
+    fragments: list[str] = []
+    cursor = 0
+    for match in TOOL_CALL_PATTERN.finditer(text):
+        fragments.append(text[cursor : match.start()])
+        cursor = match.end()
+    fragments.append(text[cursor:])
+    return "".join(fragments).strip()
+
+
+def safe_divide(numerator: float, denominator: float) -> float:
+    if denominator == 0:
+        return 0.0
+    return numerator / denominator
+
+
+def multiset_difference(left_items: list[str], right_items: list[str]) -> list[str]:
+    diff_counter = Counter(left_items) - Counter(right_items)
+    items: list[str] = []
+    for name in sorted(diff_counter):
+        items.extend([name] * diff_counter[name])
+    return items
+
+
+def evaluate_tool_call_prediction(
+    predicted_calls: list[dict[str, Any]],
+    gold_calls: list[dict[str, Any]],
+    generated_text: str,
+) -> dict[str, Any]:
+    valid_json_object, json_predicted_calls = parse_json_tool_calls(generated_text)
+    predicted_norm = [canonicalize_call(call) for call in predicted_calls]
+    json_predicted_norm = [canonicalize_call(call) for call in json_predicted_calls]
+    gold_norm = [canonicalize_call(call) for call in gold_calls]
+
+    predicted_names = [call["name"] for call in json_predicted_norm]
+    gold_names = [call["name"] for call in gold_norm]
+    predicted_call_strings = [serialize_call(call) for call in json_predicted_norm]
+    gold_call_strings = [serialize_call(call) for call in gold_norm]
+    function_selection_correct = valid_json_object and sorted(predicted_names) == sorted(gold_names)
+    kv_exact_match = function_selection_correct and sorted(predicted_call_strings) == sorted(
+        gold_call_strings
+    )
+    return {
+        "valid_json_object": valid_json_object,
+        "function_selection_correct": function_selection_correct,
+        "kv_exact_match": kv_exact_match,
+        "predicted_calls": predicted_norm,
+        "json_predicted_calls": json_predicted_norm,
+        "missing_tool_names": multiset_difference(gold_names, predicted_names),
+        "extra_tool_names": multiset_difference(predicted_names, gold_names),
+    }
 
 
 def generate_one(
@@ -203,16 +326,19 @@ def generate_one(
 
 def summarize_results(results: list[dict[str, Any]]) -> dict[str, Any]:
     total = len(results)
-    ordered_exact = sum(item["ordered_exact_match"] for item in results)
-    unordered_exact = sum(item["unordered_exact_match"] for item in results)
-    unordered_name = sum(item["unordered_name_match"] for item in results)
-    count_match = sum(item["tool_count_match"] for item in results)
-    parsed_any = sum(bool(item["predicted_calls"]) for item in results)
+    valid_json_count = sum(item["valid_json_object"] for item in results)
+    function_selection_correct_count = sum(item["function_selection_correct"] for item in results)
+    kv_exact_match_count = sum(item["kv_exact_match"] for item in results)
+
     return {
         "num_examples": total,
-        "ordered_exact_match": ordered_exact / total if total else 0.0,
-        "unordered_exact_match": unordered_exact / total if total else 0.0,
-        "unordered_name_match": unordered_name / total if total else 0.0,
-        "tool_count_match": count_match / total if total else 0.0,
-        "produced_any_tool_call": parsed_any / total if total else 0.0,
+        "valid_json_rate": valid_json_count / total if total else 0.0,
+        "function_selection_accuracy": safe_divide(
+            function_selection_correct_count,
+            valid_json_count,
+        ),
+        "kv_exact_match_rate": safe_divide(
+            kv_exact_match_count,
+            function_selection_correct_count,
+        ),
     }
