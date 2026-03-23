@@ -1,0 +1,24 @@
+--index-url https://pypi.org/simple
+--extra-index-url https://download.pytorch.org/whl/cu128
+
+# 这份依赖用于 NVIDIA RTX 5090 的 Linux 训练环境。
+# 建议使用 Python 3.12，并提前安装支持 CUDA 12.8+ 的 NVIDIA 驱动。
+# 如果你的服务器已经明确对齐到 PyTorch 的 cu130 轮子，也可以把上面的 cu128 改成 cu130。
+
+torch==2.9.1
+torchvision==0.24.1
+torchaudio==2.9.1
+
+transformers==5.3.0
+peft==0.18.1
+accelerate==1.13.0
+huggingface_hub==1.7.2
+tokenizers==0.22.2
+safetensors==0.7.0
+sentencepiece==0.2.1
+
+numpy==1.26.4
+tqdm==4.67.3
+PyYAML==6.0.3
+Jinja2==3.1.6
+psutil==7.2.2
