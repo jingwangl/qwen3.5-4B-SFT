@@ -269,18 +269,16 @@ def evaluate_tool_call_prediction(
     json_predicted_norm = [canonicalize_call(call) for call in json_predicted_calls]
     gold_norm = [canonicalize_call(call) for call in gold_calls]
 
-    predicted_names = [call["name"] for call in json_predicted_norm]
+    predicted_names = [call["name"] for call in predicted_norm]
     gold_names = [call["name"] for call in gold_norm]
-    predicted_call_strings = [serialize_call(call) for call in json_predicted_norm]
+    predicted_call_strings = [serialize_call(call) for call in predicted_norm]
     gold_call_strings = [serialize_call(call) for call in gold_norm]
-    function_selection_correct = valid_json_object and sorted(predicted_names) == sorted(gold_names)
-    kv_exact_match = function_selection_correct and sorted(predicted_call_strings) == sorted(
-        gold_call_strings
-    )
+    tool_selection_correct = sorted(predicted_names) == sorted(gold_names)
+    call_correct = sorted(predicted_call_strings) == sorted(gold_call_strings)
     return {
         "valid_json_object": valid_json_object,
-        "function_selection_correct": function_selection_correct,
-        "kv_exact_match": kv_exact_match,
+        "tool_selection_correct": tool_selection_correct,
+        "call_correct": call_correct,
         "predicted_calls": predicted_norm,
         "json_predicted_calls": json_predicted_norm,
         "missing_tool_names": multiset_difference(gold_names, predicted_names),
@@ -326,19 +324,11 @@ def generate_one(
 
 def summarize_results(results: list[dict[str, Any]]) -> dict[str, Any]:
     total = len(results)
-    valid_json_count = sum(item["valid_json_object"] for item in results)
-    function_selection_correct_count = sum(item["function_selection_correct"] for item in results)
-    kv_exact_match_count = sum(item["kv_exact_match"] for item in results)
+    tool_selection_correct_count = sum(item["tool_selection_correct"] for item in results)
+    call_correct_count = sum(item["call_correct"] for item in results)
 
     return {
         "num_examples": total,
-        "valid_json_rate": valid_json_count / total if total else 0.0,
-        "function_selection_accuracy": safe_divide(
-            function_selection_correct_count,
-            valid_json_count,
-        ),
-        "kv_exact_match_rate": safe_divide(
-            kv_exact_match_count,
-            function_selection_correct_count,
-        ),
+        "tool_selection_accuracy": safe_divide(tool_selection_correct_count, total),
+        "call_accuracy": safe_divide(call_correct_count, total),
     }

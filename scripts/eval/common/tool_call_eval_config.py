@@ -47,7 +47,7 @@ def build_parser(defaults: ToolCallEvalDefaults) -> argparse.ArgumentParser:
         help="Number of samples to evaluate. Use -1 to evaluate the whole file.",
     )
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--max-new-tokens", type=int, default=256)
+    parser.add_argument("--max-new-tokens", type=int, default=512)
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument(
         "--sample-mode",
