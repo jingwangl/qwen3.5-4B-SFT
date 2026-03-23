@@ -118,8 +118,8 @@ def evaluate_examples(config: ToolCallEvalConfigLike, examples, model, tokenizer
             sample=f"{index}/{len(examples)}",
             idx=example.index,
             json=record["valid_json_object"],
-            func=record["function_selection_correct"],
-            kv=record["kv_exact_match"],
+            tool=record["tool_selection_correct"],
+            call=record["call_correct"],
         )
 
     return results
