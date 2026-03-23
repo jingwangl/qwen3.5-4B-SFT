@@ -5,7 +5,10 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_BASE_MODEL_PATH = os.environ.get("QWEN_MODEL_PATH", "/home/jingwangl/models/Qwen3.5-4B")
+DEFAULT_BASE_MODEL_PATH = os.environ.get(
+    "QWEN_MODEL_PATH",
+    str(REPO_ROOT.parent / "models" / "Qwen3.5-4B"),
+)
 DEFAULT_DATA_PATH = REPO_ROOT / "data" / "test.json"
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "outputs" / "base_eval"
 

@@ -1,4 +1,5 @@
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -14,7 +15,12 @@ from scripts.utils.train_utils import build_full_text, build_prompt_text  # noqa
 
 
 DEFAULT_INPUT_FILE = REPO_ROOT / "data" / "xlam_function_calling_60k.json"
-DEFAULT_MODEL_PATH = Path("/home/jingwangl/models/Qwen3.5-4B")
+DEFAULT_MODEL_PATH = Path(
+    os.environ.get(
+        "QWEN_MODEL_PATH",
+        REPO_ROOT.parent / "models" / "Qwen3.5-4B",
+    )
+)
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "data" / "stats"
 
 

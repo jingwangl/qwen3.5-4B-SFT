@@ -1,7 +1,14 @@
-from transformers import AutoTokenizer, AutoModelForCausalLM
-import torch
+import os
+from pathlib import Path
 
-model_path = "/home/jingwangl/models/Qwen3.5-4B"
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+model_path = os.environ.get(
+    "QWEN_MODEL_PATH",
+    str(REPO_ROOT.parent / "models" / "Qwen3.5-4B"),
+)
 
 print("Loading tokenizer...")
 tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)

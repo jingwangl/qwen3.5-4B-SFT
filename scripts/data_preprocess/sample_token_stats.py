@@ -1,5 +1,6 @@
 import argparse
 import json
+import os
 from pathlib import Path
 
 import numpy as np
@@ -8,7 +9,12 @@ from transformers import AutoTokenizer
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_INPUT_FILE = REPO_ROOT / "data" / "train.json"
-DEFAULT_MODEL_PATH = Path("/home/jingwangl/models/Qwen3.5-4B")
+DEFAULT_MODEL_PATH = Path(
+    os.environ.get(
+        "QWEN_MODEL_PATH",
+        REPO_ROOT.parent / "models" / "Qwen3.5-4B",
+    )
+)
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "data" / "stats"
 
 

@@ -7,7 +7,10 @@ from typing import Optional
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_SMOKE_DATA_DIR = REPO_ROOT / "data" / "smoke"
-DEFAULT_MODEL_PATH = os.environ.get("QWEN_MODEL_PATH", "/home/jingwangl/models/Qwen3.5-4B")
+DEFAULT_MODEL_PATH = os.environ.get(
+    "QWEN_MODEL_PATH",
+    str(REPO_ROOT.parent / "models" / "Qwen3.5-4B"),
+)
 DEFAULT_TRAIN_FILE = DEFAULT_SMOKE_DATA_DIR / "train.json"
 DEFAULT_VAL_FILE = DEFAULT_SMOKE_DATA_DIR / "val.json"
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "outputs" / "smoke_lora_train_peft"

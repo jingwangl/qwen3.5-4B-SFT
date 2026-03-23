@@ -1,8 +1,10 @@
 import json
+from pathlib import Path
 
 
-INPUT_FILE = "/home/jingwangl/qwen-sft/data/xlam_function_calling_60k.json"
-OUTPUT_FILE = "/home/jingwangl/qwen-sft/data/deduplicated_data.json"
+REPO_ROOT = Path(__file__).resolve().parents[2]
+INPUT_FILE = REPO_ROOT / "data" / "xlam_function_calling_60k.json"
+OUTPUT_FILE = REPO_ROOT / "data" / "deduplicated_data.json"
 
 
 def normalize_json_string(text):
