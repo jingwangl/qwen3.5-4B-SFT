@@ -520,10 +520,8 @@ def _load_pretrained_model(
 def load_base_model(
     model_path: str | Path,
     dtype: torch.dtype,
-    attn_implementation: str = "flash_attention_2",
 ):
     load_kwargs: Dict[str, Any] = {
         "trust_remote_code": True,
-        "attn_implementation": attn_implementation,
     }
     return _load_pretrained_model(model_path, dtype, load_kwargs)

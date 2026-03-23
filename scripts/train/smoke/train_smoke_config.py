@@ -81,12 +81,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--lora-dropout", type=float, default=0.05)
     parser.add_argument("--target-modules", type=str, default=",".join(DEFAULT_TARGET_MODULES))
     parser.add_argument(
-        "--attn-implementation",
-        type=str,
-        choices=("sdpa", "flash_attention_2"),
-        default="flash_attention_2",
-    )
-    parser.add_argument(
         "--fused-optimizer",
         action=argparse.BooleanOptionalAction,
         default=True,
@@ -130,7 +124,6 @@ class TrainSmokeConfig:
     lora_alpha: int
     lora_dropout: float
     target_modules: tuple[str, ...]
-    attn_implementation: str
     fused_optimizer: bool
     compile_model: bool
 
@@ -206,7 +199,6 @@ class TrainSmokeConfig:
             lora_alpha=args.lora_alpha,
             lora_dropout=args.lora_dropout,
             target_modules=target_modules,
-            attn_implementation=args.attn_implementation,
             fused_optimizer=args.fused_optimizer,
             compile_model=args.compile_model,
         )
@@ -242,7 +234,6 @@ class TrainSmokeConfig:
             "dataloader_prefetch_factor": self.dataloader_prefetch_factor,
             "seed": self.seed,
             "target_modules": list(self.target_modules),
-            "attn_implementation": self.attn_implementation,
             "fused_optimizer": self.fused_optimizer,
             "compile_model": self.compile_model,
         }

@@ -56,7 +56,6 @@ class LoraTrainConfigLike(Protocol):
     lora_alpha: int
     lora_dropout: float
     target_modules: tuple[str, ...]
-    attn_implementation: str
     fused_optimizer: bool
     compile_model: bool
     tokenized_cache_dir: Path
@@ -90,7 +89,6 @@ def print_run_info(
     print(f"save_steps: {config.save_steps}")
     print(f"dataloader_num_workers: {config.dataloader_num_workers}")
     print(f"target_modules: {list(config.target_modules)}")
-    print(f"attn_implementation: {config.attn_implementation}")
     print(f"fused_optimizer: {config.fused_optimizer}")
     print(f"compile_model: {config.compile_model}")
     print(f"tokenized_cache_dir: {config.tokenized_cache_dir}")
@@ -232,17 +230,8 @@ def build_dataloaders(
 
 
 def prepare_model(config: LoraTrainConfigLike, device: torch.device, dtype: torch.dtype):
-    base_model = load_base_model(
-        config.model_path,
-        dtype,
-        attn_implementation=config.attn_implementation,
-    )
+    base_model = load_base_model(config.model_path, dtype)
     base_model.config.use_cache = False
-    actual_attn = getattr(base_model.config, "_attn_implementation", None)
-    if actual_attn is None:
-        actual_attn = getattr(base_model.config, "attn_implementation", None)
-    if actual_attn is not None:
-        print(f"resolved_attn_implementation: {actual_attn}")
 
     if hasattr(base_model, "gradient_checkpointing_enable"):
         base_model.gradient_checkpointing_enable()
