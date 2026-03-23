@@ -40,7 +40,7 @@ class TrainLoraConfig:
     max_length: int = 1536
     per_device_train_batch_size: int = 4
     per_device_eval_batch_size: int = 4
-    gradient_accumulation_steps: int = 4
+    gradient_accumulation_steps: int = 3
     num_epochs: int = 3
     max_train_steps: int | None = None
 
@@ -59,7 +59,6 @@ class TrainLoraConfig:
     lora_alpha: int = 16
     lora_dropout: float = 0.05
     target_modules: tuple[str, ...] = field(default_factory=lambda: DEFAULT_TARGET_MODULES)
-    attn_implementation: str = "flash_attention_2"
 
     tokenized_cache_dir: Path = DEFAULT_TOKENIZED_CACHE_DIR
     tokenized_cache: bool = True
@@ -101,7 +100,6 @@ class TrainLoraConfig:
             lora_alpha=args.lora_alpha,
             lora_dropout=args.lora_dropout,
             target_modules=_parse_target_modules(args.target_modules),
-            attn_implementation=args.attn_implementation,
             rebuild_tokenized_cache=args.rebuild_tokenized_cache,
         )
         config.validate()
@@ -214,11 +212,5 @@ def build_parser(defaults: TrainLoraConfig) -> argparse.ArgumentParser:
         "--target-modules",
         type=str,
         default=",".join(defaults.target_modules),
-    )
-    lora_group.add_argument(
-        "--attn-implementation",
-        type=str,
-        choices=("sdpa", "flash_attention_2"),
-        default=defaults.attn_implementation,
     )
     return parser
