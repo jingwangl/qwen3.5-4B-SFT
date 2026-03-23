@@ -9,11 +9,10 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import AutoTokenizer
 
-from scripts.utils.common import load_json_file, save_json_file
+from scripts.utils.common import save_json_file
 from scripts.utils.train_utils import (
     DatasetStats,
     build_data_collator,
-    build_dataset,
     build_peft_model,
     count_parameters,
     evaluate,
@@ -21,10 +20,12 @@ from scripts.utils.train_utils import (
     get_dtype,
     list_trainable_lora_names,
     load_base_model,
+    load_or_build_tokenized_dataset,
     prune_checkpoints,
     require_gpu,
     save_training_artifacts,
     set_seed,
+    unwrap_model,
 )
 
 
@@ -55,6 +56,12 @@ class LoraTrainConfigLike(Protocol):
     lora_alpha: int
     lora_dropout: float
     target_modules: tuple[str, ...]
+    attn_implementation: str
+    fused_optimizer: bool
+    compile_model: bool
+    tokenized_cache_dir: Path
+    tokenized_cache: bool
+    rebuild_tokenized_cache: bool
 
     def build_summary(self) -> dict: ...
 
@@ -83,6 +90,12 @@ def print_run_info(
     print(f"save_steps: {config.save_steps}")
     print(f"dataloader_num_workers: {config.dataloader_num_workers}")
     print(f"target_modules: {list(config.target_modules)}")
+    print(f"attn_implementation: {config.attn_implementation}")
+    print(f"fused_optimizer: {config.fused_optimizer}")
+    print(f"compile_model: {config.compile_model}")
+    print(f"tokenized_cache_dir: {config.tokenized_cache_dir}")
+    print(f"tokenized_cache: {config.tokenized_cache}")
+    print(f"rebuild_tokenized_cache: {config.rebuild_tokenized_cache}")
 
 
 def format_dataset_stats(split: str, stats: DatasetStats) -> str:
@@ -95,6 +108,48 @@ def format_dataset_stats(split: str, stats: DatasetStats) -> str:
     )
 
 
+def _bytes_to_gib(value: int) -> float:
+    return value / (1024 ** 3)
+
+
+def get_cuda_memory_stats(device: torch.device) -> dict[str, float] | None:
+    if device.type != "cuda":
+        return None
+
+    torch.cuda.synchronize(device)
+    device_index = device.index if device.index is not None else torch.cuda.current_device()
+    properties = torch.cuda.get_device_properties(device_index)
+    total_bytes = properties.total_memory
+    allocated_bytes = torch.cuda.memory_allocated(device)
+    reserved_bytes = torch.cuda.memory_reserved(device)
+    peak_allocated_bytes = torch.cuda.max_memory_allocated(device)
+    peak_reserved_bytes = torch.cuda.max_memory_reserved(device)
+
+    return {
+        "allocated_gib": _bytes_to_gib(allocated_bytes),
+        "reserved_gib": _bytes_to_gib(reserved_bytes),
+        "peak_allocated_gib": _bytes_to_gib(peak_allocated_bytes),
+        "peak_reserved_gib": _bytes_to_gib(peak_reserved_bytes),
+        "total_gib": _bytes_to_gib(total_bytes),
+        "allocated_pct": (allocated_bytes / total_bytes) * 100.0,
+        "reserved_pct": (reserved_bytes / total_bytes) * 100.0,
+        "peak_allocated_pct": (peak_allocated_bytes / total_bytes) * 100.0,
+        "peak_reserved_pct": (peak_reserved_bytes / total_bytes) * 100.0,
+    }
+
+
+def format_cuda_memory_stats(stats: dict[str, float] | None) -> str:
+    if stats is None:
+        return "gpu_mem=n/a"
+
+    return (
+        f"alloc={stats['allocated_gib']:.2f} GiB ({stats['allocated_pct']:.1f}%) | "
+        f"reserved={stats['reserved_gib']:.2f} GiB ({stats['reserved_pct']:.1f}%) | "
+        f"peak_alloc={stats['peak_allocated_gib']:.2f} GiB ({stats['peak_allocated_pct']:.1f}%) | "
+        f"peak_reserved={stats['peak_reserved_gib']:.2f} GiB ({stats['peak_reserved_pct']:.1f}%)"
+    )
+
+
 def load_tokenizer(config: LoraTrainConfigLike):
     tokenizer = AutoTokenizer.from_pretrained(config.model_path, trust_remote_code=True)
     if tokenizer.pad_token is None:
@@ -104,11 +159,22 @@ def load_tokenizer(config: LoraTrainConfigLike):
 
 
 def load_datasets(config: LoraTrainConfigLike, tokenizer):
-    train_data = load_json_file(config.train_file)
-    val_data = load_json_file(config.val_file)
-
-    train_dataset, train_stats = build_dataset(tokenizer, train_data, config.max_length)
-    val_dataset, val_stats = build_dataset(tokenizer, val_data, config.max_length)
+    train_dataset, train_stats, train_cache = load_or_build_tokenized_dataset(
+        tokenizer,
+        config.train_file,
+        config.max_length,
+        cache_dir=config.tokenized_cache_dir,
+        use_cache=config.tokenized_cache,
+        rebuild_cache=config.rebuild_tokenized_cache,
+    )
+    val_dataset, val_stats, val_cache = load_or_build_tokenized_dataset(
+        tokenizer,
+        config.val_file,
+        config.max_length,
+        cache_dir=config.tokenized_cache_dir,
+        use_cache=config.tokenized_cache,
+        rebuild_cache=config.rebuild_tokenized_cache,
+    )
 
     print(format_dataset_stats("train", train_stats))
     print(format_dataset_stats("val", val_stats))
@@ -120,7 +186,10 @@ def load_datasets(config: LoraTrainConfigLike, tokenizer):
     if len(val_dataset) == 0:
         print("警告：val_dataset 为空，后续评估会返回 None。")
 
-    return train_dataset, val_dataset, train_stats, val_stats
+    return train_dataset, val_dataset, train_stats, val_stats, {
+        "train": train_cache,
+        "val": val_cache,
+    }
 
 
 def build_dataloaders(
@@ -163,8 +232,17 @@ def build_dataloaders(
 
 
 def prepare_model(config: LoraTrainConfigLike, device: torch.device, dtype: torch.dtype):
-    base_model = load_base_model(config.model_path, dtype)
+    base_model = load_base_model(
+        config.model_path,
+        dtype,
+        attn_implementation=config.attn_implementation,
+    )
     base_model.config.use_cache = False
+    actual_attn = getattr(base_model.config, "_attn_implementation", None)
+    if actual_attn is None:
+        actual_attn = getattr(base_model.config, "attn_implementation", None)
+    if actual_attn is not None:
+        print(f"resolved_attn_implementation: {actual_attn}")
 
     if hasattr(base_model, "gradient_checkpointing_enable"):
         base_model.gradient_checkpointing_enable()
@@ -198,14 +276,42 @@ def prepare_model(config: LoraTrainConfigLike, device: torch.device, dtype: torc
     return model, target_modules, trainable_params, total_params
 
 
-def create_optimizer(config: LoraTrainConfigLike, model):
+def create_optimizer(config: LoraTrainConfigLike, model, device: torch.device):
     trainable_parameters = [param for param in model.parameters() if param.requires_grad]
-    optimizer = AdamW(
-        trainable_parameters,
-        lr=config.learning_rate,
-        weight_decay=config.weight_decay,
-    )
+    optimizer_kwargs = {
+        "lr": config.learning_rate,
+        "weight_decay": config.weight_decay,
+    }
+    fused_enabled = False
+
+    if config.fused_optimizer and device.type == "cuda":
+        try:
+            optimizer = AdamW(
+                trainable_parameters,
+                fused=True,
+                **optimizer_kwargs,
+            )
+            fused_enabled = True
+        except (RuntimeError, TypeError) as error:
+            print(f"警告：fused AdamW 不可用，已回退到普通 AdamW。原因: {error}")
+            optimizer = AdamW(trainable_parameters, **optimizer_kwargs)
+    else:
+        optimizer = AdamW(trainable_parameters, **optimizer_kwargs)
+
+    print(f"optimizer: AdamW{' (fused)' if fused_enabled else ''}")
     return optimizer, trainable_parameters
+
+
+def maybe_compile_model(config: LoraTrainConfigLike, model):
+    if not config.compile_model:
+        return model
+
+    if not hasattr(torch, "compile"):
+        print("警告：当前 PyTorch 不支持 torch.compile，已跳过模型编译。")
+        return model
+
+    print("torch.compile: enabled")
+    return torch.compile(model)
 
 
 def build_training_schedule(config: LoraTrainConfigLike, train_dataloader: DataLoader):
@@ -271,7 +377,7 @@ def update_learning_rate(
 
 def save_best_model(config: LoraTrainConfigLike, model, tokenizer, best_eval: dict | None) -> None:
     config.output_dir.mkdir(parents=True, exist_ok=True)
-    model.save_pretrained(config.output_dir)
+    unwrap_model(model).save_pretrained(config.output_dir)
     tokenizer.save_pretrained(config.output_dir)
     if best_eval is not None:
         save_json_file(config.output_dir / "best_eval.json", best_eval)
@@ -311,7 +417,7 @@ def run_lora_training(config: LoraTrainConfigLike, run_name: str) -> None:
     print_run_info(config, device, dtype, run_name)
 
     tokenizer = load_tokenizer(config)
-    train_dataset, val_dataset, train_stats, val_stats = load_datasets(config, tokenizer)
+    train_dataset, val_dataset, train_stats, val_stats, dataset_cache_info = load_datasets(config, tokenizer)
     train_dataloader, val_dataloader = build_dataloaders(
         config,
         tokenizer,
@@ -321,10 +427,14 @@ def run_lora_training(config: LoraTrainConfigLike, run_name: str) -> None:
     )
 
     model, target_modules, trainable_params, total_params = prepare_model(config, device, dtype)
-    optimizer, trainable_parameters = create_optimizer(config, model)
+    optimizer, trainable_parameters = create_optimizer(config, model, device)
+    model = maybe_compile_model(config, model)
     updates_per_epoch, total_steps, warmup_steps = build_training_schedule(config, train_dataloader)
 
     optimizer.zero_grad(set_to_none=True)
+    if device.type == "cuda":
+        torch.cuda.reset_peak_memory_stats(device)
+
     optimizer_step = 0
     running_loss = 0.0
     accum_steps = 0
@@ -335,6 +445,10 @@ def run_lora_training(config: LoraTrainConfigLike, run_name: str) -> None:
     total_seen_tokens = 0
     total_seen_target_tokens = 0
     start_time = time.time()
+
+    initial_memory = get_cuda_memory_stats(device)
+    if initial_memory is not None:
+        print(f"训练开始显存 | {format_cuda_memory_stats(initial_memory)}")
 
     train_step_bar = tqdm(total=total_steps, desc="训练步数")
     for epoch in range(config.num_epochs):
@@ -406,17 +520,33 @@ def run_lora_training(config: LoraTrainConfigLike, run_name: str) -> None:
             )
 
             if optimizer_step % config.log_steps == 0:
-                log_history.append(
-                    {
-                        "step": optimizer_step,
-                        "epoch": epoch + 1,
-                        "train_loss": avg_loss,
-                        "learning_rate": current_lr,
-                        "grad_norm": grad_norm_value,
-                        "train_tokens_seen": total_seen_tokens,
-                        "target_tokens_seen": total_seen_target_tokens,
-                        "target_tokens_per_second": round(target_tokens_per_second, 2),
-                    }
+                memory_stats = get_cuda_memory_stats(device)
+                log_entry = {
+                    "step": optimizer_step,
+                    "epoch": epoch + 1,
+                    "train_loss": avg_loss,
+                    "learning_rate": current_lr,
+                    "grad_norm": grad_norm_value,
+                    "train_tokens_seen": total_seen_tokens,
+                    "target_tokens_seen": total_seen_target_tokens,
+                    "target_tokens_per_second": round(target_tokens_per_second, 2),
+                }
+                if memory_stats is not None:
+                    log_entry.update(
+                        {
+                            "gpu_memory_allocated_gib": round(memory_stats["allocated_gib"], 3),
+                            "gpu_memory_reserved_gib": round(memory_stats["reserved_gib"], 3),
+                            "gpu_memory_peak_allocated_gib": round(memory_stats["peak_allocated_gib"], 3),
+                            "gpu_memory_peak_reserved_gib": round(memory_stats["peak_reserved_gib"], 3),
+                            "gpu_memory_allocated_pct": round(memory_stats["allocated_pct"], 2),
+                            "gpu_memory_reserved_pct": round(memory_stats["reserved_pct"], 2),
+                        }
+                    )
+                log_history.append(log_entry)
+                train_step_bar.write(
+                    f"step {optimizer_step} | epoch={epoch + 1} | "
+                    f"loss={avg_loss:.4f} | lr={current_lr:.2e} | grad={grad_norm_value:.2f} | "
+                    f"tok/s={target_tokens_per_second:.2f} | {format_cuda_memory_stats(memory_stats)}"
                 )
 
             current_eval = None
@@ -472,6 +602,10 @@ def run_lora_training(config: LoraTrainConfigLike, run_name: str) -> None:
         best_model_step = optimizer_step
         save_best_model(config, model, tokenizer, final_metrics)
 
+    final_memory = get_cuda_memory_stats(device)
+    if final_memory is not None:
+        print(f"训练结束显存 | {format_cuda_memory_stats(final_memory)}")
+
     elapsed_seconds = time.time() - start_time
     summary = config.build_summary()
     summary.update(
@@ -482,6 +616,7 @@ def run_lora_training(config: LoraTrainConfigLike, run_name: str) -> None:
             "total_params": total_params,
             "train_dataset": train_stats.to_dict(),
             "val_dataset": val_stats.to_dict(),
+            "dataset_cache": dataset_cache_info,
             "optimizer_steps": optimizer_step,
             "best_model_step": best_model_step,
             "elapsed_seconds": elapsed_seconds,

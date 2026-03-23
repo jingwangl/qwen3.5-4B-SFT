@@ -1,3 +1,5 @@
+import hashlib
+import json
 import math
 import shutil
 from dataclasses import dataclass
@@ -10,7 +12,10 @@ from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM
 
-from scripts.utils.common import load_json_value, save_json_file
+from scripts.utils.common import load_json_file, load_json_value, save_json_file
+
+
+TOKENIZED_CACHE_VERSION = 1
 
 
 def set_seed(seed: int) -> None:
@@ -42,6 +47,16 @@ class DatasetStats:
             "max_seq_len": self.max_seq_len,
             "avg_seq_len": round(self.avg_seq_len, 2),
         }
+
+    @classmethod
+    def from_dict(cls, payload: Dict[str, Any]) -> "DatasetStats":
+        return cls(
+            num_samples=int(payload["num_samples"]),
+            skipped_samples=int(payload["skipped_samples"]),
+            total_tokens=int(payload["total_tokens"]),
+            total_target_tokens=int(payload["total_target_tokens"]),
+            max_seq_len=int(payload["max_seq_len"]),
+        )
 
 
 def build_prompt_text(tokenizer, query: str, tools: Any) -> str:
@@ -155,6 +170,133 @@ def build_dataset(
         max_seq_len=max_seq_len,
     )
     return TokenizedDataset(rows), stats
+
+
+def _normalize_cache_component(value: str) -> str:
+    normalized = "".join(
+        char if char.isalnum() or char in ("-", "_") else "_"
+        for char in value
+    ).strip("_")
+    return normalized or "dataset"
+
+
+def _build_tokenizer_cache_metadata(tokenizer, max_length: int) -> Dict[str, Any]:
+    return {
+        "tokenizer_name_or_path": getattr(tokenizer, "name_or_path", None),
+        "tokenizer_class": tokenizer.__class__.__name__,
+        "vocab_size": getattr(tokenizer, "vocab_size", None),
+        "model_max_length": getattr(tokenizer, "model_max_length", None),
+        "padding_side": getattr(tokenizer, "padding_side", None),
+        "truncation_side": getattr(tokenizer, "truncation_side", None),
+        "pad_token_id": getattr(tokenizer, "pad_token_id", None),
+        "bos_token_id": getattr(tokenizer, "bos_token_id", None),
+        "eos_token_id": getattr(tokenizer, "eos_token_id", None),
+        "chat_template": getattr(tokenizer, "chat_template", None),
+        "max_length": max_length,
+    }
+
+
+def _build_tokenized_cache_key(data_file: str | Path, tokenizer, max_length: int) -> str:
+    data_path = Path(data_file).resolve()
+    stat = data_path.stat()
+    payload = {
+        "version": TOKENIZED_CACHE_VERSION,
+        "data_file": {
+            "path": str(data_path),
+            "size": stat.st_size,
+            "mtime_ns": stat.st_mtime_ns,
+        },
+        "tokenizer": _build_tokenizer_cache_metadata(tokenizer, max_length),
+    }
+    serialized = json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str)
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+
+def build_tokenized_cache_path(
+    data_file: str | Path,
+    tokenizer,
+    max_length: int,
+    cache_dir: str | Path,
+) -> tuple[Path, str]:
+    data_path = Path(data_file)
+    cache_key = _build_tokenized_cache_key(data_path, tokenizer, max_length)
+    cache_name = f"{_normalize_cache_component(data_path.stem)}-{cache_key[:16]}.pt"
+    return Path(cache_dir) / cache_name, cache_key
+
+
+def load_or_build_tokenized_dataset(
+    tokenizer,
+    data_file: str | Path,
+    max_length: int,
+    cache_dir: str | Path,
+    use_cache: bool = True,
+    rebuild_cache: bool = False,
+) -> Tuple[TokenizedDataset, DatasetStats, Dict[str, Any]]:
+    data_path = Path(data_file)
+    cache_path = None
+    cache_key = None
+    cache_status = "disabled"
+
+    if use_cache:
+        cache_path, cache_key = build_tokenized_cache_path(
+            data_path,
+            tokenizer,
+            max_length,
+            cache_dir,
+        )
+        if cache_path.exists() and not rebuild_cache:
+            try:
+                payload = torch.load(cache_path, map_location="cpu", weights_only=False)
+                rows = payload["rows"]
+                stats = DatasetStats.from_dict(payload["stats"])
+                print(f"tokenized cache hit: {data_path} -> {cache_path}")
+                return (
+                    TokenizedDataset(rows),
+                    stats,
+                    {
+                        "enabled": True,
+                        "status": "hit",
+                        "cache_path": str(cache_path),
+                        "cache_key": cache_key,
+                    },
+                )
+            except Exception as error:
+                print(f"警告：读取 tokenized cache 失败，准备重建。cache={cache_path} | error={error}")
+                cache_status = "recovered"
+        elif rebuild_cache:
+            cache_status = "rebuilt"
+        else:
+            cache_status = "created"
+
+    data = load_json_file(data_path)
+    dataset, stats = build_dataset(tokenizer, data, max_length)
+
+    if use_cache and cache_path is not None:
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        torch.save(
+            {
+                "rows": dataset.rows,
+                "stats": stats.to_dict(),
+                "metadata": {
+                    "version": TOKENIZED_CACHE_VERSION,
+                    "data_file": str(data_path.resolve()),
+                    "cache_key": cache_key,
+                },
+            },
+            cache_path,
+        )
+        print(f"tokenized cache {cache_status}: {data_path} -> {cache_path}")
+
+    return (
+        dataset,
+        stats,
+        {
+            "enabled": use_cache,
+            "status": cache_status,
+            "cache_path": str(cache_path) if cache_path is not None else None,
+            "cache_key": cache_key,
+        },
+    )
 
 
 def build_data_collator(
@@ -300,6 +442,22 @@ def list_trainable_lora_names(model, max_items: int = 20) -> List[str]:
     return names
 
 
+def unwrap_model(model):
+    current = model
+    while True:
+        next_model = getattr(current, "_orig_mod", None)
+        if next_model is not None and next_model is not current:
+            current = next_model
+            continue
+
+        next_model = getattr(current, "module", None)
+        if next_model is not None and next_model is not current:
+            current = next_model
+            continue
+
+        return current
+
+
 def save_training_artifacts(
     model,
     tokenizer,
@@ -312,7 +470,7 @@ def save_training_artifacts(
     checkpoint_dir = output_dir / f"checkpoint-{step}"
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
-    model.save_pretrained(checkpoint_dir)
+    unwrap_model(model).save_pretrained(checkpoint_dir)
     tokenizer.save_pretrained(checkpoint_dir)
     save_json_file(checkpoint_dir / "summary.json", summary)
     return checkpoint_dir
@@ -337,17 +495,35 @@ def prune_checkpoints(output_dir: Path, keep_last_k: int) -> None:
         shutil.rmtree(path)
 
 
-def load_base_model(model_path: str | Path, dtype: torch.dtype):
+def _load_pretrained_model(
+    model_path: str | Path,
+    dtype: torch.dtype,
+    load_kwargs: Dict[str, Any],
+):
     try:
-        model = AutoModelForCausalLM.from_pretrained(
+        return AutoModelForCausalLM.from_pretrained(
             model_path,
-            trust_remote_code=True,
             dtype=dtype,
+            **load_kwargs,
         )
-    except TypeError:
-        model = AutoModelForCausalLM.from_pretrained(
-            model_path,
-            trust_remote_code=True,
-            torch_dtype=dtype,
-        )
-    return model
+    except TypeError as first_error:
+        try:
+            return AutoModelForCausalLM.from_pretrained(
+                model_path,
+                torch_dtype=dtype,
+                **load_kwargs,
+            )
+        except TypeError:
+            raise first_error
+
+
+def load_base_model(
+    model_path: str | Path,
+    dtype: torch.dtype,
+    attn_implementation: str = "flash_attention_2",
+):
+    load_kwargs: Dict[str, Any] = {
+        "trust_remote_code": True,
+        "attn_implementation": attn_implementation,
+    }
+    return _load_pretrained_model(model_path, dtype, load_kwargs)
