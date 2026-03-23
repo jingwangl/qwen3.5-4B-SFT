@@ -14,6 +14,7 @@ DEFAULT_MODEL_PATH = os.environ.get(
 DEFAULT_TRAIN_FILE = DEFAULT_SMOKE_DATA_DIR / "train.json"
 DEFAULT_VAL_FILE = DEFAULT_SMOKE_DATA_DIR / "val.json"
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "outputs" / "smoke_lora_train_peft"
+DEFAULT_TOKENIZED_CACHE_DIR = REPO_ROOT / "outputs" / "tokenized_cache"
 
 DEFAULT_TARGET_MODULES = (
     "linear_attn.in_proj_qkv",
@@ -37,6 +38,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--train-file", type=Path, default=DEFAULT_TRAIN_FILE)
     parser.add_argument("--val-file", type=Path, default=DEFAULT_VAL_FILE)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
+    parser.add_argument("--tokenized-cache-dir", type=Path, default=DEFAULT_TOKENIZED_CACHE_DIR)
+    parser.add_argument(
+        "--tokenized-cache",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+    )
+    parser.add_argument(
+        "--rebuild-tokenized-cache",
+        action="store_true",
+        default=False,
+    )
 
     parser.add_argument("--max-length", type=int, default=1024)
     parser.add_argument("--per-device-train-batch-size", type=int, default=1)
@@ -68,6 +80,22 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--lora-alpha", type=int, default=16)
     parser.add_argument("--lora-dropout", type=float, default=0.05)
     parser.add_argument("--target-modules", type=str, default=",".join(DEFAULT_TARGET_MODULES))
+    parser.add_argument(
+        "--attn-implementation",
+        type=str,
+        choices=("sdpa", "flash_attention_2"),
+        default="flash_attention_2",
+    )
+    parser.add_argument(
+        "--fused-optimizer",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+    )
+    parser.add_argument(
+        "--compile-model",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+    )
     return parser
 
 
@@ -77,6 +105,9 @@ class TrainSmokeConfig:
     train_file: Path
     val_file: Path
     output_dir: Path
+    tokenized_cache_dir: Path
+    tokenized_cache: bool
+    rebuild_tokenized_cache: bool
     max_length: int
     per_device_train_batch_size: int
     per_device_eval_batch_size: int
@@ -99,6 +130,9 @@ class TrainSmokeConfig:
     lora_alpha: int
     lora_dropout: float
     target_modules: tuple[str, ...]
+    attn_implementation: str
+    fused_optimizer: bool
+    compile_model: bool
 
     @classmethod
     def from_cli(cls) -> "TrainSmokeConfig":
@@ -147,6 +181,9 @@ class TrainSmokeConfig:
             train_file=args.train_file,
             val_file=args.val_file,
             output_dir=args.output_dir,
+            tokenized_cache_dir=args.tokenized_cache_dir,
+            tokenized_cache=args.tokenized_cache,
+            rebuild_tokenized_cache=args.rebuild_tokenized_cache,
             max_length=args.max_length,
             per_device_train_batch_size=args.per_device_train_batch_size,
             per_device_eval_batch_size=args.per_device_eval_batch_size,
@@ -169,6 +206,9 @@ class TrainSmokeConfig:
             lora_alpha=args.lora_alpha,
             lora_dropout=args.lora_dropout,
             target_modules=target_modules,
+            attn_implementation=args.attn_implementation,
+            fused_optimizer=args.fused_optimizer,
+            compile_model=args.compile_model,
         )
 
     def build_summary(self) -> dict:
@@ -177,6 +217,9 @@ class TrainSmokeConfig:
             "train_file": str(self.train_file),
             "val_file": str(self.val_file),
             "output_dir": str(self.output_dir),
+            "tokenized_cache_dir": str(self.tokenized_cache_dir),
+            "tokenized_cache": self.tokenized_cache,
+            "rebuild_tokenized_cache": self.rebuild_tokenized_cache,
             "max_length": self.max_length,
             "max_train_steps": self.max_train_steps,
             "num_epochs": self.num_epochs,
@@ -199,4 +242,7 @@ class TrainSmokeConfig:
             "dataloader_prefetch_factor": self.dataloader_prefetch_factor,
             "seed": self.seed,
             "target_modules": list(self.target_modules),
+            "attn_implementation": self.attn_implementation,
+            "fused_optimizer": self.fused_optimizer,
+            "compile_model": self.compile_model,
         }

@@ -1,8 +1,7 @@
 import argparse
 import os
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Optional
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -13,6 +12,7 @@ DEFAULT_MODEL_PATH = os.environ.get(
 DEFAULT_TRAIN_FILE = REPO_ROOT / "data" / "train.json"
 DEFAULT_VAL_FILE = REPO_ROOT / "data" / "val.json"
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "outputs" / "lora_train_peft"
+DEFAULT_TOKENIZED_CACHE_DIR = REPO_ROOT / "outputs" / "tokenized_cache"
 
 DEFAULT_TARGET_MODULES = (
     "linear_attn.in_proj_qkv",
@@ -30,117 +30,54 @@ DEFAULT_TARGET_MODULES = (
 )
 
 
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Qwen PEFT LoRA 正式训练脚本")
-    parser.add_argument("--model-path", type=str, default=DEFAULT_MODEL_PATH)
-    parser.add_argument("--train-file", type=Path, default=DEFAULT_TRAIN_FILE)
-    parser.add_argument("--val-file", type=Path, default=DEFAULT_VAL_FILE)
-    parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
-
-    parser.add_argument("--max-length", type=int, default=1536)
-    parser.add_argument("--per-device-train-batch-size", type=int, default=1)
-    parser.add_argument("--per-device-eval-batch-size", type=int, default=8)
-    parser.add_argument("--gradient-accumulation-steps", type=int, default=8)
-
-    parser.add_argument("--num-epochs", type=int, default=3)
-    parser.add_argument(
-        "--max-train-steps",
-        type=int,
-        default=None,
-        help="最大优化步数。默认不截断，完整跑满所有 epoch 的训练数据。",
-    )
-    parser.add_argument("--learning-rate", type=float, default=2e-4)
-    parser.add_argument("--weight-decay", type=float, default=0.0)
-    parser.add_argument("--warmup-ratio", type=float, default=0.03)
-    parser.add_argument("--min-lr-ratio", type=float, default=0.1)
-    parser.add_argument("--max-grad-norm", type=float, default=1.0)
-
-    parser.add_argument("--log-steps", type=int, default=20)
-    parser.add_argument("--evals-per-epoch", type=int, default=4)
-    parser.add_argument("--save-steps", type=int, default=1000)
-    parser.add_argument("--keep-last-k-checkpoints", type=int, default=2)
-    parser.add_argument("--dataloader-num-workers", type=int, default=2)
-    parser.add_argument("--dataloader-prefetch-factor", type=int, default=2)
-    parser.add_argument("--seed", type=int, default=42)
-
-    parser.add_argument("--lora-rank", type=int, default=8)
-    parser.add_argument("--lora-alpha", type=int, default=16)
-    parser.add_argument("--lora-dropout", type=float, default=0.05)
-    parser.add_argument("--target-modules", type=str, default=",".join(DEFAULT_TARGET_MODULES))
-    return parser
-
-
 @dataclass(slots=True)
 class TrainLoraConfig:
-    model_path: str
-    train_file: Path
-    val_file: Path
-    output_dir: Path
-    max_length: int
-    per_device_train_batch_size: int
-    per_device_eval_batch_size: int
-    gradient_accumulation_steps: int
-    num_epochs: int
-    max_train_steps: Optional[int]
-    learning_rate: float
-    weight_decay: float
-    warmup_ratio: float
-    min_lr_ratio: float
-    max_grad_norm: float
-    log_steps: int
-    evals_per_epoch: int
-    save_steps: int
-    keep_last_k_checkpoints: int
-    dataloader_num_workers: int
-    dataloader_prefetch_factor: int
-    seed: int
-    lora_rank: int
-    lora_alpha: int
-    lora_dropout: float
-    target_modules: tuple[str, ...]
+    model_path: str = DEFAULT_MODEL_PATH
+    train_file: Path = DEFAULT_TRAIN_FILE
+    val_file: Path = DEFAULT_VAL_FILE
+    output_dir: Path = DEFAULT_OUTPUT_DIR
+
+    max_length: int = 1536
+    per_device_train_batch_size: int = 4
+    per_device_eval_batch_size: int = 4
+    gradient_accumulation_steps: int = 4
+    num_epochs: int = 3
+    max_train_steps: int | None = None
+
+    learning_rate: float = 2e-4
+    weight_decay: float = 0.0
+    warmup_ratio: float = 0.03
+    min_lr_ratio: float = 0.1
+    max_grad_norm: float = 1.0
+
+    log_steps: int = 2
+    evals_per_epoch: int = 2
+    save_steps: int = 1000
+    seed: int = 42
+
+    lora_rank: int = 8
+    lora_alpha: int = 16
+    lora_dropout: float = 0.05
+    target_modules: tuple[str, ...] = field(default_factory=lambda: DEFAULT_TARGET_MODULES)
+    attn_implementation: str = "flash_attention_2"
+
+    tokenized_cache_dir: Path = DEFAULT_TOKENIZED_CACHE_DIR
+    tokenized_cache: bool = True
+    rebuild_tokenized_cache: bool = False
+    keep_last_k_checkpoints: int = 2
+    dataloader_num_workers: int = 4
+    dataloader_prefetch_factor: int = 4
+    fused_optimizer: bool = True
+    compile_model: bool = False
 
     @classmethod
     def from_cli(cls) -> "TrainLoraConfig":
-        args = build_parser().parse_args()
-        return cls.from_args(args)
+        parser = build_parser(cls())
+        return cls.from_args(parser.parse_args())
 
     @classmethod
     def from_args(cls, args: argparse.Namespace) -> "TrainLoraConfig":
-        target_modules = tuple(
-            module.strip()
-            for module in args.target_modules.split(",")
-            if module.strip()
-        )
-        if not target_modules:
-            raise RuntimeError("target_modules 不能为空。")
-        if args.max_length <= 0:
-            raise RuntimeError("max_length 必须大于 0。")
-        if args.per_device_train_batch_size <= 0 or args.per_device_eval_batch_size <= 0:
-            raise RuntimeError("batch_size 必须大于 0。")
-        if args.gradient_accumulation_steps <= 0:
-            raise RuntimeError("gradient_accumulation_steps 必须大于 0。")
-        if args.num_epochs <= 0:
-            raise RuntimeError("num_epochs 必须大于 0。")
-        if args.log_steps <= 0:
-            raise RuntimeError("log_steps 必须大于 0。")
-        if args.evals_per_epoch <= 0:
-            raise RuntimeError("evals_per_epoch 必须大于 0。")
-        if args.save_steps < 0:
-            raise RuntimeError("save_steps 不能小于 0。")
-        if args.keep_last_k_checkpoints <= 0:
-            raise RuntimeError("keep_last_k_checkpoints 必须大于 0。")
-        if args.dataloader_num_workers < 0:
-            raise RuntimeError("dataloader_num_workers 不能小于 0。")
-        if args.dataloader_prefetch_factor <= 0:
-            raise RuntimeError("dataloader_prefetch_factor 必须大于 0。")
-        if not 0.0 <= args.warmup_ratio <= 1.0:
-            raise RuntimeError("warmup_ratio 需要在 [0, 1] 之间。")
-        if not 0.0 <= args.min_lr_ratio <= 1.0:
-            raise RuntimeError("min_lr_ratio 需要在 [0, 1] 之间。")
-        if args.max_grad_norm <= 0:
-            raise RuntimeError("max_grad_norm 必须大于 0。")
-
-        return cls(
+        config = cls(
             model_path=args.model_path,
             train_file=args.train_file,
             val_file=args.val_file,
@@ -159,42 +96,129 @@ class TrainLoraConfig:
             log_steps=args.log_steps,
             evals_per_epoch=args.evals_per_epoch,
             save_steps=args.save_steps,
-            keep_last_k_checkpoints=args.keep_last_k_checkpoints,
-            dataloader_num_workers=args.dataloader_num_workers,
-            dataloader_prefetch_factor=args.dataloader_prefetch_factor,
             seed=args.seed,
             lora_rank=args.lora_rank,
             lora_alpha=args.lora_alpha,
             lora_dropout=args.lora_dropout,
-            target_modules=target_modules,
+            target_modules=_parse_target_modules(args.target_modules),
+            attn_implementation=args.attn_implementation,
+            rebuild_tokenized_cache=args.rebuild_tokenized_cache,
         )
+        config.validate()
+        return config
 
-    def build_summary(self) -> dict:
-        return {
-            "model_path": str(self.model_path),
-            "train_file": str(self.train_file),
-            "val_file": str(self.val_file),
-            "output_dir": str(self.output_dir),
+    def validate(self) -> None:
+        positive_ints = {
             "max_length": self.max_length,
-            "max_train_steps": self.max_train_steps,
-            "num_epochs": self.num_epochs,
             "per_device_train_batch_size": self.per_device_train_batch_size,
             "per_device_eval_batch_size": self.per_device_eval_batch_size,
             "gradient_accumulation_steps": self.gradient_accumulation_steps,
-            "learning_rate": self.learning_rate,
-            "weight_decay": self.weight_decay,
-            "warmup_ratio": self.warmup_ratio,
-            "min_lr_ratio": self.min_lr_ratio,
-            "max_grad_norm": self.max_grad_norm,
+            "num_epochs": self.num_epochs,
             "log_steps": self.log_steps,
+            "evals_per_epoch": self.evals_per_epoch,
+            "keep_last_k_checkpoints": self.keep_last_k_checkpoints,
+            "dataloader_prefetch_factor": self.dataloader_prefetch_factor,
             "lora_rank": self.lora_rank,
             "lora_alpha": self.lora_alpha,
-            "lora_dropout": self.lora_dropout,
-            "evals_per_epoch": self.evals_per_epoch,
-            "save_steps": self.save_steps,
-            "keep_last_k_checkpoints": self.keep_last_k_checkpoints,
-            "dataloader_num_workers": self.dataloader_num_workers,
-            "dataloader_prefetch_factor": self.dataloader_prefetch_factor,
-            "seed": self.seed,
-            "target_modules": list(self.target_modules),
         }
+        for name, value in positive_ints.items():
+            if value <= 0:
+                raise RuntimeError(f"{name} 必须大于 0。")
+
+        non_negative_ints = {
+            "save_steps": self.save_steps,
+            "dataloader_num_workers": self.dataloader_num_workers,
+        }
+        for name, value in non_negative_ints.items():
+            if value < 0:
+                raise RuntimeError(f"{name} 不能小于 0。")
+
+        bounded_floats = {
+            "warmup_ratio": self.warmup_ratio,
+            "min_lr_ratio": self.min_lr_ratio,
+        }
+        for name, value in bounded_floats.items():
+            if not 0.0 <= value <= 1.0:
+                raise RuntimeError(f"{name} 需要在 [0, 1] 之间。")
+
+        if self.max_grad_norm <= 0:
+            raise RuntimeError("max_grad_norm 必须大于 0。")
+        if not self.target_modules:
+            raise RuntimeError("target_modules 不能为空。")
+
+    def build_summary(self) -> dict:
+        summary = asdict(self)
+        for key in ("train_file", "val_file", "output_dir", "tokenized_cache_dir"):
+            summary[key] = str(summary[key])
+        summary["target_modules"] = list(self.target_modules)
+        return summary
+
+
+def _parse_target_modules(raw_value: str) -> tuple[str, ...]:
+    return tuple(module.strip() for module in raw_value.split(",") if module.strip())
+
+
+def build_parser(defaults: TrainLoraConfig) -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Qwen PEFT LoRA 正式训练脚本")
+
+    io_group = parser.add_argument_group("paths")
+    io_group.add_argument("--model-path", type=str, default=defaults.model_path)
+    io_group.add_argument("--train-file", type=Path, default=defaults.train_file)
+    io_group.add_argument("--val-file", type=Path, default=defaults.val_file)
+    io_group.add_argument("--output-dir", type=Path, default=defaults.output_dir)
+    io_group.add_argument(
+        "--rebuild-tokenized-cache",
+        action="store_true",
+        default=defaults.rebuild_tokenized_cache,
+    )
+
+    train_group = parser.add_argument_group("training")
+    train_group.add_argument("--max-length", type=int, default=defaults.max_length)
+    train_group.add_argument(
+        "--per-device-train-batch-size",
+        type=int,
+        default=defaults.per_device_train_batch_size,
+    )
+    train_group.add_argument(
+        "--per-device-eval-batch-size",
+        type=int,
+        default=defaults.per_device_eval_batch_size,
+    )
+    train_group.add_argument(
+        "--gradient-accumulation-steps",
+        type=int,
+        default=defaults.gradient_accumulation_steps,
+    )
+    train_group.add_argument("--num-epochs", type=int, default=defaults.num_epochs)
+    train_group.add_argument(
+        "--max-train-steps",
+        type=int,
+        default=defaults.max_train_steps,
+        help="最大优化步数。默认不截断，完整跑满所有 epoch 的训练数据。",
+    )
+    train_group.add_argument("--learning-rate", type=float, default=defaults.learning_rate)
+    train_group.add_argument("--weight-decay", type=float, default=defaults.weight_decay)
+    train_group.add_argument("--warmup-ratio", type=float, default=defaults.warmup_ratio)
+    train_group.add_argument("--min-lr-ratio", type=float, default=defaults.min_lr_ratio)
+    train_group.add_argument("--max-grad-norm", type=float, default=defaults.max_grad_norm)
+    train_group.add_argument("--log-steps", type=int, default=defaults.log_steps)
+    train_group.add_argument("--evals-per-epoch", type=int, default=defaults.evals_per_epoch)
+    train_group.add_argument("--save-steps", type=int, default=defaults.save_steps)
+    train_group.add_argument("--seed", type=int, default=defaults.seed)
+
+    lora_group = parser.add_argument_group("lora")
+    lora_group.add_argument("--lora-rank", type=int, default=defaults.lora_rank)
+    lora_group.add_argument("--lora-alpha", type=int, default=defaults.lora_alpha)
+    lora_group.add_argument("--lora-dropout", type=float, default=defaults.lora_dropout)
+    lora_group.add_argument(
+        "--target-modules",
+        type=str,
+        default=",".join(defaults.target_modules),
+    )
+    lora_group.add_argument(
+        "--attn-implementation",
+        type=str,
+        choices=("sdpa", "flash_attention_2"),
+        default=defaults.attn_implementation,
+    )
+    return parser
