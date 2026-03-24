@@ -1,7 +1,9 @@
 import sys
+import time
 from typing import Any, Protocol
 
 from peft import PeftModel
+import torch
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -9,8 +11,9 @@ from scripts.utils.common import load_json_file, save_json_file
 from scripts.utils.tool_call_eval_utils import (
     choose_examples,
     evaluate_tool_call_prediction,
-    generate_one,
+    generate_batch,
     get_torch_dtype,
+    prepare_examples_for_batching,
     summarize_results,
 )
 
@@ -23,6 +26,8 @@ class ToolCallEvalConfigLike(Protocol):
     num_samples: int
     seed: int
     max_new_tokens: int
+    batch_size: int
+    bucket_by_length: bool
     temperature: float
     sample_mode: str
     dtype: str
@@ -38,10 +43,41 @@ class ToolCallEvalConfigLike(Protocol):
 def print_run_info(config: ToolCallEvalConfigLike, total_rows: int, total_examples: int) -> None:
     print(f"Loaded {total_rows} rows from {config.data_path}")
     print(f"Evaluating {total_examples} samples with sample_mode={config.sample_mode}")
+    print(f"Batch size: {config.batch_size}")
+    print(f"Bucket by length: {config.bucket_by_length}")
     print(f"Model type: {config.model_type}")
     print(f"Model path: {config.model_path}")
     if config.adapter_path is not None:
         print(f"Base model path: {config.base_model_path}")
+
+
+def format_cuda_mem_gib(memory_bytes: int) -> str:
+    return f"{memory_bytes / (1024**3):.2f} GiB"
+
+
+def format_cuda_memory_log_line(tokens_per_sec: float) -> str | None:
+    if not torch.cuda.is_available():
+        return None
+    device_index = torch.cuda.current_device()
+    total_mem = torch.cuda.get_device_properties(device_index).total_memory
+
+    allocated = torch.cuda.memory_allocated(device_index)
+    reserved = torch.cuda.memory_reserved(device_index)
+    peak_alloc = torch.cuda.max_memory_allocated(device_index)
+    peak_reserved = torch.cuda.max_memory_reserved(device_index)
+
+    alloc_ratio = (allocated / total_mem) * 100
+    reserved_ratio = (reserved / total_mem) * 100
+    peak_alloc_ratio = (peak_alloc / total_mem) * 100
+    peak_reserved_ratio = (peak_reserved / total_mem) * 100
+
+    return (
+        f"| tok/s={tokens_per_sec:.2f} "
+        f"| alloc={format_cuda_mem_gib(allocated)} ({alloc_ratio:.1f}%) "
+        f"| reserved={format_cuda_mem_gib(reserved)} ({reserved_ratio:.1f}%) "
+        f"| peak_alloc={format_cuda_mem_gib(peak_alloc)} ({peak_alloc_ratio:.1f}%) "
+        f"| peak_reserved={format_cuda_mem_gib(peak_reserved)} ({peak_reserved_ratio:.1f}%)"
+    )
 
 
 def load_model_and_tokenizer(config: ToolCallEvalConfigLike):
@@ -50,6 +86,7 @@ def load_model_and_tokenizer(config: ToolCallEvalConfigLike):
             config.tokenizer_path,
             trust_remote_code=True,
         )
+        tokenizer.padding_side = "left"
         if tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
 
@@ -91,36 +128,58 @@ def load_model_and_tokenizer(config: ToolCallEvalConfigLike):
 
 def evaluate_examples(config: ToolCallEvalConfigLike, examples, model, tokenizer) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
+    prepared_examples = prepare_examples_for_batching(
+        tokenizer=tokenizer,
+        examples=examples,
+        bucket_by_length=config.bucket_by_length,
+    )
 
-    # 这里保留最核心的逐条评估逻辑，方便后面继续扩展指标。
-    progress_bar = tqdm(examples, desc="评测中")
-    for index, example in enumerate(progress_bar, start=1):
-        generated_text, predicted_calls = generate_one(
+    if torch.cuda.is_available():
+        torch.cuda.reset_peak_memory_stats()
+
+    progress_bar = tqdm(total=len(examples), desc="评测中")
+    for batch_start in range(0, len(prepared_examples), config.batch_size):
+        batch_items = prepared_examples[batch_start : batch_start + config.batch_size]
+        batch_examples = [item[0] for item in batch_items]
+        batch_prompts = [item[1] for item in batch_items]
+        batch_begin = time.perf_counter()
+        batch_outputs, generated_token_count = generate_batch(
             tokenizer=tokenizer,
             model=model,
-            example=example,
+            prompts=batch_prompts,
             max_new_tokens=config.max_new_tokens,
             temperature=config.temperature,
         )
-        gold_calls = example.gold_calls
-        metrics = evaluate_tool_call_prediction(predicted_calls, gold_calls, generated_text)
-        record = {
-            "dataset_index": example.index,
-            "query": example.query,
-            "tools": example.tools,
-            "gold_calls": gold_calls,
-            "predicted_text": generated_text,
-            "predicted_calls": predicted_calls,
-            **metrics,
-        }
-        results.append(record)
-        progress_bar.set_postfix(
-            sample=f"{index}/{len(examples)}",
-            idx=example.index,
-            json=record["valid_json_object"],
-            tool=record["tool_selection_correct"],
-            call=record["call_correct"],
-        )
+        batch_duration = max(time.perf_counter() - batch_begin, 1e-8)
+        tokens_per_sec = generated_token_count / batch_duration
+
+        for example, (generated_text, predicted_calls) in zip(batch_examples, batch_outputs):
+            gold_calls = example.gold_calls
+            metrics = evaluate_tool_call_prediction(predicted_calls, gold_calls, generated_text)
+            record = {
+                "dataset_index": example.index,
+                "query": example.query,
+                "tools": example.tools,
+                "gold_calls": gold_calls,
+                "predicted_text": generated_text,
+                "predicted_calls": predicted_calls,
+                **metrics,
+            }
+            results.append(record)
+            progress_bar.update(1)
+            progress_bar.set_postfix(
+                sample=f"{len(results)}/{len(examples)}",
+                idx=example.index,
+                json=record["valid_json_object"],
+                tool=record["tool_selection_correct"],
+                call=record["call_correct"],
+            )
+
+        cuda_log_line = format_cuda_memory_log_line(tokens_per_sec)
+        if cuda_log_line is not None:
+            print(cuda_log_line)
+
+    progress_bar.close()
 
     return results
 
