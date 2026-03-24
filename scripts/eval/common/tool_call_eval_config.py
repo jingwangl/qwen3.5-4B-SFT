@@ -48,6 +48,18 @@ def build_parser(defaults: ToolCallEvalDefaults) -> argparse.ArgumentParser:
     )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--max-new-tokens", type=int, default=512)
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=4,
+        help="Batch size for model.generate during evaluation.",
+    )
+    parser.add_argument(
+        "--bucket-by-length",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Sort samples by prompt length before batching to reduce padding waste.",
+    )
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument(
         "--sample-mode",
@@ -72,6 +84,8 @@ class ToolCallEvalConfig:
     num_samples: int
     seed: int
     max_new_tokens: int
+    batch_size: int
+    bucket_by_length: bool
     temperature: float
     sample_mode: str
     dtype: str
@@ -87,6 +101,8 @@ class ToolCallEvalConfig:
             raise RuntimeError("num_samples 只能是 -1 或正整数。")
         if args.max_new_tokens <= 0:
             raise RuntimeError("max_new_tokens 必须大于 0。")
+        if args.batch_size <= 0:
+            raise RuntimeError("batch_size 必须大于 0。")
         if args.temperature < 0:
             raise RuntimeError("temperature 不能小于 0。")
         if args.adapter_path is not None and not args.adapter_path.exists():
@@ -100,6 +116,8 @@ class ToolCallEvalConfig:
             num_samples=args.num_samples,
             seed=args.seed,
             max_new_tokens=args.max_new_tokens,
+            batch_size=args.batch_size,
+            bucket_by_length=args.bucket_by_length,
             temperature=args.temperature,
             sample_mode=args.sample_mode,
             dtype=args.dtype,
@@ -145,6 +163,8 @@ class ToolCallEvalConfig:
             "resolved_num_samples": self.resolve_num_samples(total_rows),
             "seed": self.seed,
             "max_new_tokens": self.max_new_tokens,
+            "batch_size": self.batch_size,
+            "bucket_by_length": self.bucket_by_length,
             "temperature": self.temperature,
             "sample_mode": self.sample_mode,
             "dtype": self.dtype,

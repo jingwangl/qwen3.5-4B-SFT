@@ -286,21 +286,44 @@ def evaluate_tool_call_prediction(
     }
 
 
-def generate_one(
-    tokenizer: AutoTokenizer,
-    model: AutoModelForCausalLM,
-    example: EvalExample,
-    max_new_tokens: int,
-    temperature: float,
-) -> tuple[str, list[dict[str, Any]]]:
+def build_generation_prompt(tokenizer: AutoTokenizer, example: EvalExample) -> str:
     messages = [{"role": "user", "content": example.query}]
-    prompt = tokenizer.apply_chat_template(
+    return tokenizer.apply_chat_template(
         messages,
         tools=example.tools,
         tokenize=False,
         add_generation_prompt=True,
     )
-    inputs = tokenizer([prompt], return_tensors="pt").to(model.device)
+
+
+def prepare_examples_for_batching(
+    tokenizer: AutoTokenizer,
+    examples: list[EvalExample],
+    bucket_by_length: bool,
+) -> list[tuple[EvalExample, str, int]]:
+    prompts = [build_generation_prompt(tokenizer, example) for example in examples]
+    tokenized = tokenizer(
+        prompts,
+        add_special_tokens=False,
+        return_attention_mask=False,
+    )
+    prompt_lengths = [len(ids) for ids in tokenized["input_ids"]]
+
+    prepared = list(zip(examples, prompts, prompt_lengths))
+    if bucket_by_length:
+        prepared.sort(key=lambda item: item[2])
+    return prepared
+
+
+def generate_batch(
+    tokenizer: AutoTokenizer,
+    model: AutoModelForCausalLM,
+    prompts: list[str],
+    max_new_tokens: int,
+    temperature: float,
+) -> tuple[list[tuple[str, list[dict[str, Any]]]], int]:
+    model_device = next(model.parameters()).device
+    inputs = tokenizer(prompts, return_tensors="pt", padding=True).to(model_device)
 
     generate_kwargs = {
         "max_new_tokens": max_new_tokens,
@@ -317,9 +340,15 @@ def generate_one(
     with torch.no_grad():
         output_ids = model.generate(**inputs, **generate_kwargs)
 
-    generated_ids = output_ids[0][inputs.input_ids.shape[1] :]
-    generated_text = tokenizer.decode(generated_ids, skip_special_tokens=True)
-    return generated_text, parse_tool_calls(generated_text)
+    outputs: list[tuple[str, list[dict[str, Any]]]] = []
+    input_lengths = inputs["attention_mask"].sum(dim=1)
+    generated_token_count = 0
+    for row_index in range(output_ids.shape[0]):
+        generated_ids = output_ids[row_index][int(input_lengths[row_index]) :]
+        generated_token_count += int(generated_ids.shape[0])
+        generated_text = tokenizer.decode(generated_ids, skip_special_tokens=True)
+        outputs.append((generated_text, parse_tool_calls(generated_text)))
+    return outputs, generated_token_count
 
 
 def summarize_results(results: list[dict[str, Any]]) -> dict[str, Any]:
