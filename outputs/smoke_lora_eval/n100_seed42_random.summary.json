@@ -1,0 +1,19 @@
+{
+  "run_name": "n100_seed42_random",
+  "model_type": "lora_adapter",
+  "model_path": "/home/jingwangl/qwen-sft/outputs/smoke_lora_train_peft",
+  "base_model_path": "/home/jingwangl/models/Qwen3.5-4B",
+  "adapter_path": "/home/jingwangl/qwen-sft/outputs/smoke_lora_train_peft",
+  "data_path": "/home/jingwangl/qwen-sft/data/smoke/val.json",
+  "output_dir": "/home/jingwangl/qwen-sft/outputs/smoke_lora_eval",
+  "requested_num_samples": -1,
+  "resolved_num_samples": 100,
+  "seed": 42,
+  "max_new_tokens": 512,
+  "temperature": 0.0,
+  "sample_mode": "random",
+  "dtype": "auto",
+  "num_examples": 100,
+  "tool_selection_accuracy": 0.96,
+  "call_accuracy": 0.79
+}

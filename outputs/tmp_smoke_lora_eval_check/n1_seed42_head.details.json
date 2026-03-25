@@ -1,0 +1,107 @@
+[
+  {
+    "dataset_index": 0,
+    "query": "Place an order at the Whole Foods store in Los Angeles with a large order size for items: ['grapes', 'oranges', 'milk']. Simulate a query to the database with conditions: [{'item': 'grapes'}, {'item': 'oranges'}, {'item': 'milk'}].",
+    "tools": [
+      {
+        "name": "whole_foods_order",
+        "description": "Places an order at Whole Foods.",
+        "parameters": {
+          "store_location": {
+            "description": "The location of the Whole Foods store.",
+            "type": "str"
+          },
+          "item_list": {
+            "description": "A list of items to order.",
+            "type": "list"
+          },
+          "order_size": {
+            "description": "The size of the order. Allowed values: \"small\", \"medium\", or \"large\".",
+            "type": "str"
+          }
+        }
+      },
+      {
+        "name": "simulate_query_database",
+        "description": "Simulates querying a database based on certain conditions.",
+        "parameters": {
+          "table": {
+            "description": "Name of the table to query.",
+            "type": "str"
+          },
+          "conditions": {
+            "description": "Conditions for the query, each condition is a dictionary.",
+            "type": "list"
+          }
+        }
+      },
+      {
+        "name": "calculate_calorie_intake",
+        "description": "Calculates the recommended daily calorie intake and macronutrient distribution based on personal characteristics and goals.",
+        "parameters": {
+          "weight_kg": {
+            "description": "Body weight in kilograms.",
+            "type": "float"
+          },
+          "height_cm": {
+            "description": "Height in centimeters.",
+            "type": "float"
+          },
+          "age": {
+            "description": "Age in years.",
+            "type": "int"
+          },
+          "sex": {
+            "description": "Biological sex, either 'male' or 'female'.",
+            "type": "str"
+          },
+          "activity_level": {
+            "description": "Activity level on a scale of 1 to 5 (1 = sedentary, 5 = extremely active).",
+            "type": "int"
+          },
+          "goal": {
+            "description": "Fitness goal, either 'lose', 'maintain', or 'gain'.",
+            "type": "str"
+          }
+        }
+      }
+    ],
+    "gold_calls": [
+      {
+        "name": "whole_foods_order",
+        "arguments": {
+          "store_location": "Los Angeles",
+          "item_list": [
+            "grapes",
+            "oranges",
+            "milk"
+          ],
+          "order_size": "large"
+        }
+      },
+      {
+        "name": "simulate_query_database",
+        "arguments": {
+          "table": "orders",
+          "conditions": [
+            {
+              "item": "grapes"
+            },
+            {
+              "item": "oranges"
+            },
+            {
+              "item": "milk"
+            }
+          ]
+        }
+      }
+    ],
+    "predicted_text": "Okay, let's tackle this. The user wants two things: place an order at Whole Foods in Los Angeles with specific items and a large order size, and then simulate a database query for those same items.\n\nFirst, I need to make sure I use the correct function for the Whole Foods order. The function is",
+    "predicted_calls": [],
+    "ordered_exact_match": false,
+    "unordered_exact_match": false,
+    "unordered_name_match": false,
+    "tool_count_match": false
+  }
+]

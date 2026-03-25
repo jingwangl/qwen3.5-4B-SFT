@@ -1,0 +1,10 @@
+{
+  "step": 90,
+  "epoch": 1,
+  "train_loss": 0.05001705884933472,
+  "learning_rate": 0.00018873864161953315,
+  "grad_norm": 1.020740032196045,
+  "eval": null,
+  "train_tokens_seen": 53041,
+  "target_tokens_seen": 6260
+}

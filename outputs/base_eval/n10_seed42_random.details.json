@@ -1,0 +1,873 @@
+[
+  {
+    "dataset_index": 41905,
+    "query": "What is the latitude and longitude of the IP addresses '74.125.24.100' and '74.125.24.101'?",
+    "tools": [
+      {
+        "name": "get_ip_location",
+        "description": "Retrieves the latitude and longitude coordinates of a given IP address using the ip-api.com API.",
+        "parameters": {
+          "ip": {
+            "description": "The IP address to locate.",
+            "type": "str"
+          }
+        }
+      }
+    ],
+    "gold_calls": [
+      {
+        "name": "get_ip_location",
+        "arguments": {
+          "ip": "74.125.24.100"
+        }
+      },
+      {
+        "name": "get_ip_location",
+        "arguments": {
+          "ip": "74.125.24.101"
+        }
+      }
+    ],
+    "predicted_text": "The user is asking for the latitude and longitude coordinates of two IP addresses: '74.125.24.100' and '74.125.24.101'. I have a function called get_ip_location that can retrieve the latitude and longitude coordinates of a given IP address using the ip-api.com API.\n\nI need to call this function twice, once for each IP address. Let me make both function calls.\n</think>\n\n<tool_call>\n<function=get_ip_location>\n<parameter=ip>\n74.125.24.100\n</parameter>\n</function>\n</tool_call>\n<tool_call>\n<function=get_ip_location>\n<parameter=ip>\n74.125.24.101\n</parameter>\n</function>\n</tool_call>\n",
+    "predicted_calls": [
+      {
+        "name": "get_ip_location",
+        "arguments": {
+          "ip": "74.125.24.100"
+        }
+      },
+      {
+        "name": "get_ip_location",
+        "arguments": {
+          "ip": "74.125.24.101"
+        }
+      }
+    ],
+    "ordered_exact_match": true,
+    "unordered_exact_match": true,
+    "unordered_name_match": true,
+    "tool_count_match": true
+  },
+  {
+    "dataset_index": 7296,
+    "query": "I'm creating a word puzzle for different age groups. I need 7 easy words for kids, 14 medium words for teens, and 20 hard words for adults.",
+    "tools": [
+      {
+        "name": "produce_mixy_words_list",
+        "description": "Generates a list of random words based on the specified amount and difficulty level by querying the Mixy Word Guess API.",
+        "parameters": {
+          "amount": {
+            "description": "The number of words to generate. Valid values are integers between 1 and 100. Default is 10.",
+            "type": "int, optional",
+            "default": "10"
+          },
+          "difficulty": {
+            "description": "The difficulty level of the words. Valid values are \"easy\", \"medium\", and \"hard\". Default is 'easy'.",
+            "type": "str, optional",
+            "default": "easy"
+          }
+        }
+      }
+    ],
+    "gold_calls": [
+      {
+        "name": "produce_mixy_words_list",
+        "arguments": {
+          "amount": 7,
+          "difficulty": "easy"
+        }
+      },
+      {
+        "name": "produce_mixy_words_list",
+        "arguments": {
+          "amount": 14,
+          "difficulty": "medium"
+        }
+      },
+      {
+        "name": "produce_mixy_words_list",
+        "arguments": {
+          "amount": 20,
+          "difficulty": "hard"
+        }
+      }
+    ],
+    "predicted_text": "The user is asking for words at different difficulty levels for different age groups:\n- 7 easy words for kids\n- 14 medium words for teens\n- 20 hard words for adults\n\nI need to use the produce_mixy_words_list function to generate these words. Looking at the function parameters:\n- amount: The number of words to generate (1-100, default 10)\n- difficulty: \"easy\", \"medium\", or \"hard\" (default \"easy\")\n\nI need to make three separate function calls since the function only accepts one difficulty level at a time:\n1. 7 easy words\n2. 14 medium words\n3. 20 hard words\n\nLet me make these three function calls.\n</think>\n\n<tool_call>\n<function=produce_mixy_words_list>\n<parameter=amount>\n7\n</parameter>\n<parameter=difficulty>\neasy\n</parameter>\n</function>\n</tool_call>\n<tool_call>\n<function=produce_mixy_words_list>\n<parameter=amount>\n14\n</parameter>\n<parameter=difficulty>\nmedium\n</parameter>\n</function>\n</tool_call>\n<tool_call>\n<function=produce_mixy_words_list>\n<parameter=amount>\n20\n</parameter>\n<parameter=difficulty>\nhard\n</parameter>\n</function>\n</tool_call>\n",
+    "predicted_calls": [
+      {
+        "name": "produce_mixy_words_list",
+        "arguments": {
+          "amount": 7,
+          "difficulty": "easy"
+        }
+      },
+      {
+        "name": "produce_mixy_words_list",
+        "arguments": {
+          "amount": 14,
+          "difficulty": "medium"
+        }
+      },
+      {
+        "name": "produce_mixy_words_list",
+        "arguments": {
+          "amount": 20,
+          "difficulty": "hard"
+        }
+      }
+    ],
+    "ordered_exact_match": true,
+    "unordered_exact_match": true,
+    "unordered_name_match": true,
+    "tool_count_match": true
+  },
+  {
+    "dataset_index": 1639,
+    "query": "Retrieve information for a vehicle with VIN 5XYZU3LA3DG123456.",
+    "tools": [
+      {
+        "name": "mileages",
+        "description": "Fetch mileage data from the car API based on various optional filters and sorting options.",
+        "parameters": {
+          "make_model_id": {
+            "description": "The ID of the make and model.",
+            "type": "str, optional",
+            "default": ""
+          },
+          "limit": {
+            "description": "The number of results to limit the response to.",
+            "type": "int, optional",
+            "default": ""
+          },
+          "make_model_trim_id": {
+            "description": "The ID of the make, model, and trim.",
+            "type": "str, optional",
+            "default": ""
+          },
+          "trim": {
+            "description": "The trim level of the car.",
+            "type": "str, optional",
+            "default": ""
+          },
+          "json": {
+            "description": "An array of URL encoded JSON conditions for complex queries.",
+            "type": "str, optional",
+            "default": ""
+          },
+          "range_highway": {
+            "description": "The range of highway mileage.",
+            "type": "str, optional",
+            "default": ""
+          },
+          "sort": {
+            "description": "The field to sort the results by. Default is 'id'.",
+            "type": "str, optional",
+            "default": "id"
+          },
+          "direction": {
+            "description": "The direction to sort by ('asc' or 'desc'). Default is 'asc'.",
+            "type": "str, optional",
+            "default": "asc"
+          },
+          "range_city": {
+            "description": "The range of city mileage.",
+            "type": "str, optional",
+            "default": ""
+          },
+          "page": {
+            "description": "The page number for paginated results.",
+            "type": "int, optional",
+            "default": ""
+          },
+          "combined_mpg": {
+            "description": "The combined miles per gallon value.",
+            "type": "str, optional",
+            "default": ""
+          },
+          "verbose": {
+            "description": "Include make, model and trim information in the results. Default is 'yes'.",
+            "type": "str, optional",
+            "default": "yes"
+          },
+          "epa_highway_mpg": {
+            "description": "The EPA highway miles per gallon value.",
+            "type": "str, optional",
+            "default": ""
+          },
+          "epa_city_mpg": {
+            "description": "The EPA city miles per gallon value.",
+            "type": "str, optional",
+            "default": ""
+          },
+          "model": {
+            "description": "The car model.",
+            "type": "str, optional",
+            "default": ""
+          },
+          "year": {
+            "description": "The year of the car.",
+            "type": "str, optional",
+            "default": ""
+          },
+          "make_id": {
+            "description": "The ID of the car make.",
+            "type": "str, optional",
+            "default": ""
+          },
+          "make": {
+            "description": "The car make.",
+            "type": "str, optional",
+            "default": ""
+          }
+        }
+      },
+      {
+        "name": "v1_vinlookup",
+        "description": "Retrieves key vehicle information including manufacturer, country of origin, and model year for a given VIN using the API Ninjas VIN Lookup API.",
+        "parameters": {
+          "vin": {
+            "description": "A valid Vehicle Identification Number (VIN), which must be a 17-character string.",
+            "type": "str",
+            "default": "JH4KA7561PC008269"
+          }
+        }
+      },
+      {
+        "name": "livetraffic",
+        "description": "Retrieves information about all aircraft within a 25-nautical mile radius of the specified latitude and longitude.",
+        "parameters": {
+          "lat": {
+            "description": "Latitude of the center point (-90 to 90).",
+            "type": "int",
+            "default": ""
+          },
+          "lon": {
+            "description": "Longitude of the center point (-180 to 180). Note: Longitude in the US is typically negative.",
+            "type": "int",
+            "default": ""
+          }
+        }
+      }
+    ],
+    "gold_calls": [
+      {
+        "name": "v1_vinlookup",
+        "arguments": {
+          "vin": "5XYZU3LA3DG123456"
+        }
+      }
+    ],
+    "predicted_text": "The user is asking me to retrieve information for a vehicle with a specific VIN: 5XYZU3LA3DG123456. I can see there's a function called \"v1_vinlookup\" that retrieves key vehicle information including manufacturer, country of origin, and model year for a given VIN.\n\nLooking at the function parameters:\n- vin: A valid Vehicle Identification Number (VIN), which must be a 17-character string. The default is \"JH4KA7561PC008269\"\n\nThe user provided VIN \"5XYZU3LA3DG123456\" which is 17 characters long, so it should be valid. I need to call the v1_vinlookup function with this VIN parameter.\n</think>\n\n<tool_call>\n<function=v1_vinlookup>\n<parameter=vin>\n5XYZU3LA3DG123456\n</parameter>\n</function>\n</tool_call>\n",
+    "predicted_calls": [
+      {
+        "name": "v1_vinlookup",
+        "arguments": {
+          "vin": "5XYZU3LA3DG123456"
+        }
+      }
+    ],
+    "ordered_exact_match": true,
+    "unordered_exact_match": true,
+    "unordered_name_match": true,
+    "tool_count_match": true
+  },
+  {
+    "dataset_index": 48598,
+    "query": "Retrieve a random fake bank record with ID 987.",
+    "tools": [
+      {
+        "name": "product_groups_list",
+        "description": "Fetches a list of product groups based on specified categories and types with optional pagination.",
+        "parameters": {
+          "size": {
+            "description": "The number of items per response. Maximum is 500. Defaults to 100.",
+            "type": "int, optional",
+            "default": "100"
+          },
+          "productgrouptypeid": {
+            "description": "The ID representing the type of product group.",
+            "type": "int, optional",
+            "default": ""
+          },
+          "page": {
+            "description": "The page index starting from 0 for pagination purposes.",
+            "type": "int, optional",
+            "default": ""
+          },
+          "parentproductgroupid": {
+            "description": "The ID of the parent product group to filter the results.",
+            "type": "int, optional",
+            "default": ""
+          }
+        }
+      },
+      {
+        "name": "top_free_ipad_apps",
+        "description": "Retrieve a list of the top free iPad apps from the App Store.",
+        "parameters": {
+          "country": {
+            "description": "The country code for the App Store. Default is 'us'.",
+            "type": "str, optional",
+            "default": "us"
+          },
+          "category": {
+            "description": "The category ID for the apps. Default is '6016'.",
+            "type": "str, optional",
+            "default": "6016"
+          },
+          "lang": {
+            "description": "The language code for the results. Default is 'en'.",
+            "type": "str, optional",
+            "default": "en"
+          },
+          "num": {
+            "description": "The number of results to return. Default is 100.",
+            "type": "int, optional",
+            "default": "100"
+          }
+        }
+      },
+      {
+        "name": "get_dns_records",
+        "description": "Fetch DNS records for a given domain using the specified parameters.",
+        "parameters": {
+          "domain": {
+            "description": "The domain for which to fetch the DNS records.",
+            "type": "str",
+            "default": "rapidapi.com"
+          },
+          "record_type": {
+            "description": "A comma-separated string specifying the types of DNS records to fetch. Possible values include 'a', 'ns', 'mx', 'txt', and 'cname'. Defaults to 'a,mx'.",
+            "type": "str, optional",
+            "default": "a,mx"
+          },
+          "response_type_seperator": {
+            "description": "Specifies the delimiter to use when the response type is 'target'. Default is ',' (comma).",
+            "type": "str, optional",
+            "default": ","
+          },
+          "response_type": {
+            "description": "Specifies the kind of data to return, such as 'ip', 'txt', or 'target'. Default is 'target'.",
+            "type": "str, optional",
+            "default": "target"
+          }
+        }
+      },
+      {
+        "name": "random_bank_by_id",
+        "description": "Fetch a random fake bank record by its ID.",
+        "parameters": {
+          "is_id": {
+            "description": "The ID of the fake bank record to retrieve.",
+            "type": "int",
+            "default": "1"
+          }
+        }
+      }
+    ],
+    "gold_calls": [
+      {
+        "name": "random_bank_by_id",
+        "arguments": {
+          "is_id": 987
+        }
+      }
+    ],
+    "predicted_text": "The user wants to retrieve a random fake bank record with ID 987. I can see there's a function called \"random_bank_by_id\" that does exactly this. Let me check the parameters:\n\n- is_id: The ID of the fake bank record to retrieve (required, default is 1)\n\nThe user specifically wants ID 987, so I need to set the is_id parameter to 987. This is a straightforward request with no additional complexity.\n</think>\n\n<tool_call>\n<function=random_bank_by_id>\n<parameter=is_id>\n987\n</parameter>\n</function>\n</tool_call>\n",
+    "predicted_calls": [
+      {
+        "name": "random_bank_by_id",
+        "arguments": {
+          "is_id": 987
+        }
+      }
+    ],
+    "ordered_exact_match": true,
+    "unordered_exact_match": true,
+    "unordered_name_match": true,
+    "tool_count_match": true
+  },
+  {
+    "dataset_index": 18024,
+    "query": "What is the FLAMES score for the names 'John' and 'Mary'?",
+    "tools": [
+      {
+        "name": "get_joke_of_the_day_by_category",
+        "description": "Fetches the joke of the day from a specified category using the World of Jokes API.",
+        "parameters": {
+          "category": {
+            "description": "The category of joke to be fetched.",
+            "type": "str",
+            "default": "Money"
+          }
+        }
+      },
+      {
+        "name": "flame",
+        "description": "Calculates the FLAMES relationship compatibility score for two given names using the Flames Love Calculator API.",
+        "parameters": {
+          "sname": {
+            "description": "The second name to be used in the compatibility calculation.",
+            "type": "str",
+            "default": "Shefali"
+          },
+          "fname": {
+            "description": "The first name to be used in the compatibility calculation.",
+            "type": "str",
+            "default": "Rahul"
+          }
+        }
+      },
+      {
+        "name": "get_random_question",
+        "description": "Fetches a random question from the API, with an optional parameter to specify the type of the challenge.",
+        "parameters": {
+          "type": {
+            "description": "The type of question to fetch. Options include 'funny' and 'dirty'. Defaults to 'dirty'.",
+            "type": "str",
+            "default": "dirty"
+          }
+        }
+      }
+    ],
+    "gold_calls": [
+      {
+        "name": "flame",
+        "arguments": {
+          "fname": "John",
+          "sname": "Mary"
+        }
+      }
+    ],
+    "predicted_text": "The user is asking for the FLAMES score for the names 'John' and 'Mary'. I need to use the flame function to calculate this. Looking at the function parameters:\n\n- fname: The first name to be used in the compatibility calculation (default: \"Rahul\")\n- sname: The second name to be used in the compatibility calculation (default: \"Shefali\")\n\nThe user wants to calculate for 'John' and 'Mary', so I need to set:\n- fname: \"John\"\n- sname: \"Mary\"\n\nBoth parameters are optional with defaults, but the user has specified specific names, so I should use those values.\n</think>\n\n<tool_call>\n<function=flame>\n<parameter=fname>\nJohn\n</parameter>\n<parameter=sname>\nMary\n</parameter>\n</function>\n</tool_call>\n",
+    "predicted_calls": [
+      {
+        "name": "flame",
+        "arguments": {
+          "fname": "John",
+          "sname": "Mary"
+        }
+      }
+    ],
+    "ordered_exact_match": true,
+    "unordered_exact_match": true,
+    "unordered_name_match": true,
+    "tool_count_match": true
+  },
+  {
+    "dataset_index": 16049,
+    "query": "Place a small order at the Whole Foods located at 789 Red Boulevard. I need to order cheese, yogurt, and butter.",
+    "tools": [
+      {
+        "name": "whole_foods_order",
+        "description": "Places an order at Whole Foods.",
+        "parameters": {
+          "store_location": {
+            "description": "The location of the Whole Foods store.",
+            "type": "str"
+          },
+          "item_list": {
+            "description": "A list of items to order.",
+            "type": "list"
+          },
+          "order_size": {
+            "description": "The size of the order. Allowed values: \"small\", \"medium\", or \"large\".",
+            "type": "str"
+          }
+        }
+      },
+      {
+        "name": "project_investment_growth",
+        "description": "Projects the growth of an investment over a specified number of years.",
+        "parameters": {
+          "principal": {
+            "description": "The initial investment amount.",
+            "type": "float",
+            "default": true
+          },
+          "annual_addition": {
+            "description": "The amount added to the investment annually.",
+            "type": "float",
+            "default": true
+          },
+          "years": {
+            "description": "The number of years to project the investment growth.",
+            "type": "int"
+          },
+          "return_rate": {
+            "description": "The annual return rate as a decimal (e.g., 0.07 for 7%).",
+            "type": "float"
+          },
+          "inflation": {
+            "description": "A list of annual inflation rates as decimals.",
+            "type": "List[float]"
+          },
+          "inflation_adjusted": {
+            "description": "Whether to adjust the final value for inflation. Defaults to True.",
+            "type": "bool, optional"
+          }
+        }
+      }
+    ],
+    "gold_calls": [
+      {
+        "name": "whole_foods_order",
+        "arguments": {
+          "store_location": "789 Red Boulevard",
+          "item_list": [
+            "cheese",
+            "yogurt",
+            "butter"
+          ],
+          "order_size": "small"
+        }
+      }
+    ],
+    "predicted_text": "The user wants me to place a small order at Whole Foods. Let me check the parameters needed:\n\n1. store_location: \"789 Red Boulevard\" (provided)\n2. item_list: [\"cheese\", \"yogurt\", \"butter\"] (provided)\n3. order_size: \"small\" (provided)\n\nAll required parameters are available, so I can proceed with the function call.\n</think>\n\n<tool_call>\n<function=whole_foods_order>\n<parameter=store_location>\n789 Red Boulevard\n</parameter>\n<parameter=item_list>\n[\"cheese\", \"yogurt\", \"butter\"]\n</parameter>\n<parameter=order_size>\nsmall\n</parameter>\n</function>\n</tool_call>\n",
+    "predicted_calls": [
+      {
+        "name": "whole_foods_order",
+        "arguments": {
+          "store_location": "789 Red Boulevard",
+          "item_list": [
+            "cheese",
+            "yogurt",
+            "butter"
+          ],
+          "order_size": "small"
+        }
+      }
+    ],
+    "ordered_exact_match": true,
+    "unordered_exact_match": true,
+    "unordered_name_match": true,
+    "tool_count_match": true
+  },
+  {
+    "dataset_index": 14628,
+    "query": "Compute the Euclidean distance between points (10, 10) and (20, 20).",
+    "tools": [
+      {
+        "name": "euclidean_distance",
+        "description": "Computes the Euclidean distance between two points in a 2D plane.",
+        "parameters": {
+          "point_a": {
+            "description": "The coordinates of the first point (x, y).",
+            "type": "Tuple[float, float]"
+          },
+          "point_b": {
+            "description": "The coordinates of the second point (x, y).",
+            "type": "Tuple[float, float]"
+          }
+        }
+      }
+    ],
+    "gold_calls": [
+      {
+        "name": "euclidean_distance",
+        "arguments": {
+          "point_a": [
+            10,
+            10
+          ],
+          "point_b": [
+            20,
+            20
+          ]
+        }
+      }
+    ],
+    "predicted_text": "The user wants me to compute the Euclidean distance between two points: (10, 10) and (20, 20). I have a function called euclidean_distance that can do this. Let me call it with the appropriate parameters.\n\nThe function takes two parameters:\n- point_a: A tuple of (x, y) coordinates\n- point_b: A tuple of (x, y) coordinates\n\nSo I need to call it with:\n- point_a: (10, 10)\n- point_b: (20, 20)\n</think>\n\n<tool_call>\n<function=euclidean_distance>\n<parameter=point_a>\n(10, 10)\n</parameter>\n<parameter=point_b>\n(20, 20)\n</parameter>\n</function>\n</tool_call>\n",
+    "predicted_calls": [
+      {
+        "name": "euclidean_distance",
+        "arguments": {
+          "point_a": "(10, 10)",
+          "point_b": "(20, 20)"
+        }
+      }
+    ],
+    "ordered_exact_match": false,
+    "unordered_exact_match": false,
+    "unordered_name_match": true,
+    "tool_count_match": true
+  },
+  {
+    "dataset_index": 9144,
+    "query": "Retrieve news on COVID-19 from the Health section in English for the US.",
+    "tools": [
+      {
+        "name": "topic_news_by_section",
+        "description": "Fetches news articles based on a specific section and topic.",
+        "parameters": {
+          "section": {
+            "description": "The news section to search within.",
+            "type": "str",
+            "default": "CAQiW0NCQVNQZ29JTDIwdk1EZGpNWFlTQW1WdUdnSlZVeUlQQ0FRYUN3b0pMMjB2TURKdFpqRnVLaGtLRndvVFIwRkVSMFZVWDFORlExUkpUMDVmVGtGTlJTQUJLQUEqKggAKiYICiIgQ0JBU0Vnb0lMMjB2TURkak1YWVNBbVZ1R2dKVlV5Z0FQAVAB"
+          },
+          "topic": {
+            "description": "The topic for which to get news headlines.",
+            "type": "str",
+            "default": "TECHNOLOGY"
+          },
+          "lang": {
+            "description": "The language to use for the results, specified as a 2-letter language code (default is 'en').",
+            "type": "str, optional",
+            "default": "en"
+          },
+          "country": {
+            "description": "The country code to filter the news by country (default is 'US').",
+            "type": "str, optional",
+            "default": "US"
+          }
+        }
+      },
+      {
+        "name": "get_ios_app",
+        "description": "Fetches a specific iOS app's details using the app ID from the iOS Store API.",
+        "parameters": {
+          "is_id": {
+            "description": "The ID of the iOS app to fetch.",
+            "type": "str",
+            "default": "880047117"
+          }
+        }
+      },
+      {
+        "name": "get_date_and_time_by_city",
+        "description": "Get the current date and time for a specified city.",
+        "parameters": {
+          "city": {
+            "description": "Name of the city to get the date and time for.",
+            "type": "str",
+            "default": "Los Angeles"
+          }
+        }
+      },
+      {
+        "name": "gettechdomains",
+        "description": "Retrieve the domains that use a specific technology.",
+        "parameters": {
+          "tech": {
+            "description": "The name of the technology to search for.",
+            "type": "str",
+            "default": "g-suite"
+          }
+        }
+      },
+      {
+        "name": "listar_todos",
+        "description": "Fetch a list of all ministries and subsecretariats using the specified API.",
+        "parameters": {
+          "todos": {
+            "description": "The endpoint to retrieve the list of ministries and subsecretariats.",
+            "type": "str",
+            "default": "ministerios"
+          }
+        }
+      },
+      {
+        "name": "summary",
+        "description": "Fetches a summary of property records by units given an address.",
+        "parameters": {
+          "number": {
+            "description": "The street number of the property.",
+            "type": "str",
+            "default": "220"
+          },
+          "street": {
+            "description": "The name of the street.",
+            "type": "str",
+            "default": "Central Park S"
+          },
+          "zipcode": {
+            "description": "The zipcode of the property. Defaults to '10019'.",
+            "type": "str, optional",
+            "default": "10019"
+          }
+        }
+      }
+    ],
+    "gold_calls": [
+      {
+        "name": "topic_news_by_section",
+        "arguments": {
+          "section": "Health",
+          "topic": "COVID-19",
+          "lang": "en",
+          "country": "US"
+        }
+      }
+    ],
+    "predicted_text": "The user wants to retrieve news on COVID-19 from the Health section in English for the US. I need to use the topic_news_by_section function with the following parameters:\n\n- section: \"Health\" (the user specified Health section)\n- topic: \"COVID-19\" (the user wants news on COVID-19)\n- lang: \"en\" (the user specified English)\n- country: \"US\" (the user specified US)\n\nAll the required parameters are provided by the user, so I can make the function call.\n</think>\n\n<tool_call>\n<function=topic_news_by_section>\n<parameter=section>\nHealth\n</parameter>\n<parameter=topic>\nCOVID-19\n</parameter>\n<parameter=lang>\nen\n</parameter>\n<parameter=country>\nUS\n</parameter>\n</function>\n</tool_call>\n",
+    "predicted_calls": [
+      {
+        "name": "topic_news_by_section",
+        "arguments": {
+          "section": "Health",
+          "topic": "COVID-19",
+          "lang": "en",
+          "country": "US"
+        }
+      }
+    ],
+    "ordered_exact_match": true,
+    "unordered_exact_match": true,
+    "unordered_name_match": true,
+    "tool_count_match": true
+  },
+  {
+    "dataset_index": 48265,
+    "query": "What are some fake Google autocomplete suggestions for 'how to', 'do a backflip', and 'safely'? Also, provide the cast and crew of the movie 'The Dark Knight'.",
+    "tools": [
+      {
+        "name": "google_fake_autocomplete",
+        "description": "Generate a fake Google autocomplete suggestion using three input texts.",
+        "parameters": {
+          "text1": {
+            "description": "The first text input for the autocomplete query.",
+            "type": "str",
+            "default": "Search"
+          },
+          "text3": {
+            "description": "The third text input for the autocomplete query.",
+            "type": "str",
+            "default": "search autocomplete 2"
+          },
+          "text2": {
+            "description": "The second text input for the autocomplete query.",
+            "type": "str",
+            "default": "search autocomplete 1"
+          }
+        }
+      },
+      {
+        "name": "title_cast_crew",
+        "description": "Fetches and returns the cast and crew information of a given title from the Watchmode API.",
+        "parameters": {
+          "is_id": {
+            "description": "The ID of the title. This can be the Watchmode ID, IMDB ID, or a TMDB type and ID combination.",
+            "type": "str",
+            "default": "3173903"
+          }
+        }
+      }
+    ],
+    "gold_calls": [
+      {
+        "name": "google_fake_autocomplete",
+        "arguments": {
+          "text1": "how to",
+          "text2": "do a backflip",
+          "text3": "safely"
+        }
+      },
+      {
+        "name": "title_cast_crew",
+        "arguments": {
+          "is_id": "tt0468569"
+        }
+      }
+    ],
+    "predicted_text": "The user is asking for two things:\n1. Fake Google autocomplete suggestions for the query combining 'how to', 'do a backflip', and 'safely'\n2. Cast and crew information for the movie 'The Dark Knight'\n\nFor the first request, I need to use the google_fake_autocomplete function with:\n- text1: \"how to\"\n- text2: \"do a backflip\"\n- text3: \"safely\"\n\nFor the second request, I need to use the title_cast_crew function. However, I need to figure out what ID to use for 'The Dark Knight'. The function accepts Watchmode ID, IMDB ID, or TMDB type and ID combination. Since I don't have the specific ID for 'The Dark Knight', I should use the default value which is \"3173903\". This might be a placeholder, but I'll use it since I don't have the actual ID.\n\nLet me make both function calls.\n</think>\n\n<tool_call>\n<function=google_fake_autocomplete>\n<parameter=text1>\nhow to\n</parameter>\n<parameter=text2>\ndo a backflip\n</parameter>\n<parameter=text3>\nsafely\n</parameter>\n</function>\n</tool_call>\n<tool_call>\n<function=title_cast_crew>\n<parameter=is_id>\n3173903\n</parameter>\n</function>\n</tool_call>\n",
+    "predicted_calls": [
+      {
+        "name": "google_fake_autocomplete",
+        "arguments": {
+          "text1": "how to",
+          "text2": "do a backflip",
+          "text3": "safely"
+        }
+      },
+      {
+        "name": "title_cast_crew",
+        "arguments": {
+          "is_id": 3173903
+        }
+      }
+    ],
+    "ordered_exact_match": false,
+    "unordered_exact_match": false,
+    "unordered_name_match": true,
+    "tool_count_match": true
+  },
+  {
+    "dataset_index": 6717,
+    "query": "Find the 7th smallest number in the list [12, 34, 56, 78, 90, 23, 45, 67].",
+    "tools": [
+      {
+        "name": "find_kth_smallest_number",
+        "description": "Finds the kth smallest number in a list.",
+        "parameters": {
+          "nums": {
+            "description": "The list of numbers.",
+            "type": "List[int]"
+          },
+          "k": {
+            "description": "The position (1-based index) of the smallest number to find.",
+            "type": "int"
+          }
+        }
+      },
+      {
+        "name": "final_velocity",
+        "description": "Calculates the final velocity of an object given its initial velocity, acceleration, and time.",
+        "parameters": {
+          "initial_velocity": {
+            "description": "The initial velocity of the object.",
+            "type": "float"
+          },
+          "acceleration": {
+            "description": "The acceleration of the object.",
+            "type": "float"
+          },
+          "time": {
+            "description": "The time elapsed.",
+            "type": "float"
+          }
+        }
+      }
+    ],
+    "gold_calls": [
+      {
+        "name": "find_kth_smallest_number",
+        "arguments": {
+          "nums": [
+            12,
+            34,
+            56,
+            78,
+            90,
+            23,
+            45,
+            67
+          ],
+          "k": 7
+        }
+      }
+    ],
+    "predicted_text": "The user wants to find the 7th smallest number in the list [12, 34, 56, 78, 90, 23, 45, 67].\n\nI need to use the find_kth_smallest_number function with:\n- nums: [12, 34, 56, 78, 90, 23, 45, 67]\n- k: 7\n\nLet me make the function call.\n</think>\n\n<tool_call>\n<function=find_kth_smallest_number>\n<parameter=nums>\n[12, 34, 56, 78, 90, 23, 45, 67]\n</parameter>\n<parameter=k>\n7\n</parameter>\n</function>\n</tool_call>\n",
+    "predicted_calls": [
+      {
+        "name": "find_kth_smallest_number",
+        "arguments": {
+          "nums": [
+            12,
+            34,
+            56,
+            78,
+            90,
+            23,
+            45,
+            67
+          ],
+          "k": 7
+        }
+      }
+    ],
+    "ordered_exact_match": true,
+    "unordered_exact_match": true,
+    "unordered_name_match": true,
+    "tool_count_match": true
+  }
+]

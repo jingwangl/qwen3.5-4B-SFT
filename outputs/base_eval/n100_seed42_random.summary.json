@@ -1,0 +1,8 @@
+{
+  "num_examples": 100,
+  "ordered_exact_match": 0.66,
+  "unordered_exact_match": 0.64,
+  "unordered_name_match": 0.97,
+  "tool_count_match": 0.98,
+  "produced_any_tool_call": 0.99
+}
