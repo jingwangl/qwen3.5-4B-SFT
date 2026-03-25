@@ -51,7 +51,7 @@ def build_parser(defaults: ToolCallEvalDefaults) -> argparse.ArgumentParser:
     parser.add_argument(
         "--batch-size",
         type=int,
-        default=4,
+        default=28,
         help="Batch size for model.generate during evaluation.",
     )
     parser.add_argument(

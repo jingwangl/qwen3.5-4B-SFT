@@ -311,7 +311,7 @@ def prepare_examples_for_batching(
 
     prepared = list(zip(examples, prompts, prompt_lengths))
     if bucket_by_length:
-        prepared.sort(key=lambda item: item[2])
+        prepared.sort(key=lambda item: item[2], reverse=True)
     return prepared
 
 
