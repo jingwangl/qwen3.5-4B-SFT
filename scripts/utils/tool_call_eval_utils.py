@@ -36,6 +36,8 @@ PreparedEvalItem = tuple[EvalExample, str, int]
 class EvalBatchPlan:
     items: list[PreparedEvalItem]
     prompt_token_count: int
+    max_prompt_length: int
+    estimated_token_count: int
     exceeds_token_budget: bool = False
 
 
@@ -329,6 +331,7 @@ def build_dynamic_batches(
     prepared_examples: list[PreparedEvalItem],
     first_batch_size: int,
     max_batch_size: int,
+    max_new_tokens: int,
 ) -> tuple[list[EvalBatchPlan], int]:
     if first_batch_size <= 0:
         raise ValueError("first_batch_size 必须大于 0。")
@@ -336,37 +339,51 @@ def build_dynamic_batches(
         raise ValueError("max_batch_size 必须大于 0。")
     if max_batch_size < first_batch_size:
         raise ValueError("max_batch_size 不能小于 first_batch_size。")
+    if max_new_tokens <= 0:
+        raise ValueError("max_new_tokens 必须大于 0。")
     if not prepared_examples:
         return [], 0
 
     initial_count = min(first_batch_size, len(prepared_examples))
     initial_items = prepared_examples[:initial_count]
-    token_budget = sum(item[2] for item in initial_items)
+    initial_prompt_token_count = sum(item[2] for item in initial_items)
+    initial_max_prompt_length = max(item[2] for item in initial_items)
+    token_budget = initial_count * (initial_max_prompt_length + max_new_tokens)
     batches = [
         EvalBatchPlan(
             items=list(initial_items),
-            prompt_token_count=token_budget,
+            prompt_token_count=initial_prompt_token_count,
+            max_prompt_length=initial_max_prompt_length,
+            estimated_token_count=token_budget,
         )
     ]
 
     current_items: list[PreparedEvalItem] = []
     current_token_count = 0
+    current_max_prompt_length = 0
     for item in prepared_examples[initial_count:]:
         prompt_length = item[2]
-        if prompt_length > token_budget:
+        single_item_estimated_token_count = prompt_length + max_new_tokens
+        if single_item_estimated_token_count > token_budget:
             if current_items:
                 batches.append(
                     EvalBatchPlan(
                         items=current_items,
                         prompt_token_count=current_token_count,
+                        max_prompt_length=current_max_prompt_length,
+                        estimated_token_count=len(current_items)
+                        * (current_max_prompt_length + max_new_tokens),
                     )
                 )
                 current_items = []
                 current_token_count = 0
+                current_max_prompt_length = 0
             batches.append(
                 EvalBatchPlan(
                     items=[item],
                     prompt_token_count=prompt_length,
+                    max_prompt_length=prompt_length,
+                    estimated_token_count=single_item_estimated_token_count,
                     exceeds_token_budget=True,
                 )
             )
@@ -374,27 +391,36 @@ def build_dynamic_batches(
 
         next_batch_size = len(current_items) + 1
         next_token_count = current_token_count + prompt_length
+        next_max_prompt_length = max(current_max_prompt_length, prompt_length)
+        next_estimated_token_count = next_batch_size * (next_max_prompt_length + max_new_tokens)
         if current_items and (
-            next_batch_size > max_batch_size or next_token_count > token_budget
+            next_batch_size > max_batch_size or next_estimated_token_count > token_budget
         ):
             batches.append(
                 EvalBatchPlan(
                     items=current_items,
                     prompt_token_count=current_token_count,
+                    max_prompt_length=current_max_prompt_length,
+                    estimated_token_count=len(current_items)
+                    * (current_max_prompt_length + max_new_tokens),
                 )
             )
             current_items = [item]
             current_token_count = prompt_length
+            current_max_prompt_length = prompt_length
             continue
 
         current_items.append(item)
         current_token_count = next_token_count
+        current_max_prompt_length = next_max_prompt_length
 
     if current_items:
         batches.append(
             EvalBatchPlan(
                 items=current_items,
                 prompt_token_count=current_token_count,
+                max_prompt_length=current_max_prompt_length,
+                estimated_token_count=len(current_items) * (current_max_prompt_length + max_new_tokens),
             )
         )
 

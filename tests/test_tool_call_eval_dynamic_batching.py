@@ -72,39 +72,46 @@ class BuildDynamicBatchesTests(unittest.TestCase):
             prepared_examples=make_prepared_items([10, 9, 8, 7, 6]),
             first_batch_size=2,
             max_batch_size=4,
+            max_new_tokens=4,
         )
 
-        self.assertEqual(token_budget, 19)
+        self.assertEqual(token_budget, 28)
         self.assertEqual([item[2] for item in batches[0].items], [10, 9])
         self.assertEqual([batch.prompt_token_count for batch in batches], [19, 15, 6])
+        self.assertEqual([batch.max_prompt_length for batch in batches], [10, 8, 6])
+        self.assertEqual([batch.estimated_token_count for batch in batches], [28, 24, 10])
 
     def test_shorter_samples_can_expand_later_batches(self):
         batches, token_budget = build_dynamic_batches(
             prepared_examples=make_prepared_items([10, 9, 4, 4, 4, 4]),
             first_batch_size=2,
             max_batch_size=10,
+            max_new_tokens=4,
         )
 
-        self.assertEqual(token_budget, 19)
-        self.assertEqual(len(batches[1].items), 4)
-        self.assertLessEqual(batches[1].prompt_token_count, token_budget)
+        self.assertEqual(token_budget, 28)
+        self.assertEqual(len(batches[1].items), 3)
+        self.assertGreater(len(batches[1].items), 2)
+        self.assertLessEqual(batches[1].estimated_token_count, token_budget)
 
     def test_max_batch_size_caps_batch_growth(self):
         batches, token_budget = build_dynamic_batches(
             prepared_examples=make_prepared_items([8, 8, 1, 1, 1, 1, 1]),
             first_batch_size=2,
             max_batch_size=3,
+            max_new_tokens=4,
         )
 
-        self.assertEqual(token_budget, 16)
+        self.assertEqual(token_budget, 24)
         self.assertEqual([len(batch.items) for batch in batches], [2, 3, 2])
-        self.assertEqual([batch.prompt_token_count for batch in batches[1:]], [3, 2])
+        self.assertEqual([batch.estimated_token_count for batch in batches[1:]], [15, 10])
 
     def test_preserves_input_order_when_lengths_are_unsorted(self):
         batches, _ = build_dynamic_batches(
             prepared_examples=make_prepared_items([2, 2, 10, 1, 1]),
             first_batch_size=2,
             max_batch_size=4,
+            max_new_tokens=4,
         )
 
         flattened_indices = [
@@ -116,16 +123,17 @@ class BuildDynamicBatchesTests(unittest.TestCase):
 
     def test_oversized_sample_runs_alone_with_warning_flag(self):
         batches, token_budget = build_dynamic_batches(
-            prepared_examples=make_prepared_items([5, 5, 11, 4, 4]),
+            prepared_examples=make_prepared_items([5, 5, 15, 4, 4]),
             first_batch_size=2,
             max_batch_size=4,
+            max_new_tokens=4,
         )
 
-        self.assertEqual(token_budget, 10)
+        self.assertEqual(token_budget, 18)
         self.assertEqual([len(batch.items) for batch in batches], [2, 1, 2])
         self.assertFalse(batches[0].exceeds_token_budget)
         self.assertTrue(batches[1].exceeds_token_budget)
-        self.assertEqual(batches[1].prompt_token_count, 11)
+        self.assertEqual(batches[1].estimated_token_count, 19)
         self.assertEqual([item[2] for item in batches[2].items], [4, 4])
 
 

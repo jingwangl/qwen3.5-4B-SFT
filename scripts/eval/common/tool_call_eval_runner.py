@@ -145,8 +145,13 @@ def evaluate_examples(
         prepared_examples=prepared_examples,
         first_batch_size=config.batch_size,
         max_batch_size=config.max_batch_size,
+        max_new_tokens=config.max_new_tokens,
     )
-    print(f"Dynamic batch token budget: {dynamic_batch_token_budget}")
+    print(
+        "Dynamic batch token budget: "
+        f"{dynamic_batch_token_budget} "
+        "(batch_size * (max_prompt_length + max_new_tokens))"
+    )
     print(f"Prepared {len(batch_plans)} batches")
 
     if torch.cuda.is_available():
@@ -159,12 +164,15 @@ def evaluate_examples(
         batch_prompts = [item[1] for item in batch_items]
         print(
             f"Batch {batch_index}/{len(batch_plans)}: "
-            f"size={len(batch_items)} prompt_tokens={batch_plan.prompt_token_count}"
+            f"size={len(batch_items)} "
+            f"prompt_tokens={batch_plan.prompt_token_count} "
+            f"max_prompt_tokens={batch_plan.max_prompt_length} "
+            f"estimated_tokens={batch_plan.estimated_token_count}"
         )
         if batch_plan.exceeds_token_budget and batch_examples:
             print(
                 "Warning: sample "
-                f"{batch_examples[0].index} prompt_tokens={batch_plan.prompt_token_count} "
+                f"{batch_examples[0].index} estimated_tokens={batch_plan.estimated_token_count} "
                 f"exceeds dynamic budget={dynamic_batch_token_budget}; running it alone."
             )
         batch_begin = time.perf_counter()
@@ -229,9 +237,12 @@ def run_tool_call_eval(config: ToolCallEvalConfigLike) -> int:
     if model is None or tokenizer is None:
         return 1
 
+    eval_begin = time.perf_counter()
     results, dynamic_batch_token_budget = evaluate_examples(config, examples, model, tokenizer)
+    total_eval_time_sec = time.perf_counter() - eval_begin
     summary = config.build_summary_metadata(total_rows)
     summary["dynamic_batch_token_budget"] = dynamic_batch_token_budget
+    summary["total_eval_time_sec"] = round(total_eval_time_sec, 3)
     summary.update(summarize_results(results))
     save_results(config, total_rows, summary, results)
 
