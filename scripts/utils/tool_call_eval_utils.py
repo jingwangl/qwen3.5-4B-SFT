@@ -29,6 +29,16 @@ class EvalExample:
     gold_calls: list[dict[str, Any]]
 
 
+PreparedEvalItem = tuple[EvalExample, str, int]
+
+
+@dataclass
+class EvalBatchPlan:
+    items: list[PreparedEvalItem]
+    prompt_token_count: int
+    exceeds_token_budget: bool = False
+
+
 def choose_examples(
     rows: list[dict[str, Any]],
     num_samples: int,
@@ -300,7 +310,7 @@ def prepare_examples_for_batching(
     tokenizer: AutoTokenizer,
     examples: list[EvalExample],
     bucket_by_length: bool,
-) -> list[tuple[EvalExample, str, int]]:
+) -> list[PreparedEvalItem]:
     prompts = [build_generation_prompt(tokenizer, example) for example in examples]
     tokenized = tokenizer(
         prompts,
@@ -313,6 +323,82 @@ def prepare_examples_for_batching(
     if bucket_by_length:
         prepared.sort(key=lambda item: item[2], reverse=True)
     return prepared
+
+
+def build_dynamic_batches(
+    prepared_examples: list[PreparedEvalItem],
+    first_batch_size: int,
+    max_batch_size: int,
+) -> tuple[list[EvalBatchPlan], int]:
+    if first_batch_size <= 0:
+        raise ValueError("first_batch_size 必须大于 0。")
+    if max_batch_size <= 0:
+        raise ValueError("max_batch_size 必须大于 0。")
+    if max_batch_size < first_batch_size:
+        raise ValueError("max_batch_size 不能小于 first_batch_size。")
+    if not prepared_examples:
+        return [], 0
+
+    initial_count = min(first_batch_size, len(prepared_examples))
+    initial_items = prepared_examples[:initial_count]
+    token_budget = sum(item[2] for item in initial_items)
+    batches = [
+        EvalBatchPlan(
+            items=list(initial_items),
+            prompt_token_count=token_budget,
+        )
+    ]
+
+    current_items: list[PreparedEvalItem] = []
+    current_token_count = 0
+    for item in prepared_examples[initial_count:]:
+        prompt_length = item[2]
+        if prompt_length > token_budget:
+            if current_items:
+                batches.append(
+                    EvalBatchPlan(
+                        items=current_items,
+                        prompt_token_count=current_token_count,
+                    )
+                )
+                current_items = []
+                current_token_count = 0
+            batches.append(
+                EvalBatchPlan(
+                    items=[item],
+                    prompt_token_count=prompt_length,
+                    exceeds_token_budget=True,
+                )
+            )
+            continue
+
+        next_batch_size = len(current_items) + 1
+        next_token_count = current_token_count + prompt_length
+        if current_items and (
+            next_batch_size > max_batch_size or next_token_count > token_budget
+        ):
+            batches.append(
+                EvalBatchPlan(
+                    items=current_items,
+                    prompt_token_count=current_token_count,
+                )
+            )
+            current_items = [item]
+            current_token_count = prompt_length
+            continue
+
+        current_items.append(item)
+        current_token_count = next_token_count
+
+    if current_items:
+        batches.append(
+            EvalBatchPlan(
+                items=current_items,
+                prompt_token_count=current_token_count,
+            )
+        )
+
+    return batches, token_budget
 
 
 def generate_batch(

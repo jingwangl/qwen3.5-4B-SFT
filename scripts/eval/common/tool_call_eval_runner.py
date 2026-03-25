@@ -9,6 +9,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from scripts.utils.common import load_json_file, save_json_file
 from scripts.utils.tool_call_eval_utils import (
+    build_dynamic_batches,
     choose_examples,
     evaluate_tool_call_prediction,
     generate_batch,
@@ -27,6 +28,7 @@ class ToolCallEvalConfigLike(Protocol):
     seed: int
     max_new_tokens: int
     batch_size: int
+    max_batch_size: int
     bucket_by_length: bool
     temperature: float
     sample_mode: str
@@ -43,7 +45,8 @@ class ToolCallEvalConfigLike(Protocol):
 def print_run_info(config: ToolCallEvalConfigLike, total_rows: int, total_examples: int) -> None:
     print(f"Loaded {total_rows} rows from {config.data_path}")
     print(f"Evaluating {total_examples} samples with sample_mode={config.sample_mode}")
-    print(f"Batch size: {config.batch_size}")
+    print(f"First batch size: {config.batch_size}")
+    print(f"Max batch size: {config.max_batch_size}")
     print(f"Bucket by length: {config.bucket_by_length}")
     print(f"Model type: {config.model_type}")
     print(f"Model path: {config.model_path}")
@@ -126,22 +129,44 @@ def load_model_and_tokenizer(config: ToolCallEvalConfigLike):
     return model, tokenizer
 
 
-def evaluate_examples(config: ToolCallEvalConfigLike, examples, model, tokenizer) -> list[dict[str, Any]]:
+def evaluate_examples(
+    config: ToolCallEvalConfigLike,
+    examples,
+    model,
+    tokenizer,
+) -> tuple[list[dict[str, Any]], int]:
     results: list[dict[str, Any]] = []
     prepared_examples = prepare_examples_for_batching(
         tokenizer=tokenizer,
         examples=examples,
         bucket_by_length=config.bucket_by_length,
     )
+    batch_plans, dynamic_batch_token_budget = build_dynamic_batches(
+        prepared_examples=prepared_examples,
+        first_batch_size=config.batch_size,
+        max_batch_size=config.max_batch_size,
+    )
+    print(f"Dynamic batch token budget: {dynamic_batch_token_budget}")
+    print(f"Prepared {len(batch_plans)} batches")
 
     if torch.cuda.is_available():
         torch.cuda.reset_peak_memory_stats()
 
     progress_bar = tqdm(total=len(examples), desc="评测中")
-    for batch_start in range(0, len(prepared_examples), config.batch_size):
-        batch_items = prepared_examples[batch_start : batch_start + config.batch_size]
+    for batch_index, batch_plan in enumerate(batch_plans, start=1):
+        batch_items = batch_plan.items
         batch_examples = [item[0] for item in batch_items]
         batch_prompts = [item[1] for item in batch_items]
+        print(
+            f"Batch {batch_index}/{len(batch_plans)}: "
+            f"size={len(batch_items)} prompt_tokens={batch_plan.prompt_token_count}"
+        )
+        if batch_plan.exceeds_token_budget and batch_examples:
+            print(
+                "Warning: sample "
+                f"{batch_examples[0].index} prompt_tokens={batch_plan.prompt_token_count} "
+                f"exceeds dynamic budget={dynamic_batch_token_budget}; running it alone."
+            )
         batch_begin = time.perf_counter()
         batch_outputs, generated_token_count = generate_batch(
             tokenizer=tokenizer,
@@ -181,7 +206,7 @@ def evaluate_examples(config: ToolCallEvalConfigLike, examples, model, tokenizer
 
     progress_bar.close()
 
-    return results
+    return results, dynamic_batch_token_budget
 
 
 def save_results(
@@ -204,8 +229,9 @@ def run_tool_call_eval(config: ToolCallEvalConfigLike) -> int:
     if model is None or tokenizer is None:
         return 1
 
-    results = evaluate_examples(config, examples, model, tokenizer)
+    results, dynamic_batch_token_budget = evaluate_examples(config, examples, model, tokenizer)
     summary = config.build_summary_metadata(total_rows)
+    summary["dynamic_batch_token_budget"] = dynamic_batch_token_budget
     summary.update(summarize_results(results))
     save_results(config, total_rows, summary, results)
 

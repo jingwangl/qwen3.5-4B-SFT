@@ -52,7 +52,13 @@ def build_parser(defaults: ToolCallEvalDefaults) -> argparse.ArgumentParser:
         "--batch-size",
         type=int,
         default=28,
-        help="Batch size for model.generate during evaluation.",
+        help="First-batch size for dynamic model.generate batching during evaluation.",
+    )
+    parser.add_argument(
+        "--max-batch-size",
+        type=int,
+        default=None,
+        help="Maximum batch size for dynamic evaluation batches. Defaults to --batch-size.",
     )
     parser.add_argument(
         "--bucket-by-length",
@@ -85,6 +91,7 @@ class ToolCallEvalConfig:
     seed: int
     max_new_tokens: int
     batch_size: int
+    max_batch_size: int
     bucket_by_length: bool
     temperature: float
     sample_mode: str
@@ -103,6 +110,13 @@ class ToolCallEvalConfig:
             raise RuntimeError("max_new_tokens 必须大于 0。")
         if args.batch_size <= 0:
             raise RuntimeError("batch_size 必须大于 0。")
+        resolved_max_batch_size = (
+            args.batch_size if args.max_batch_size is None else args.max_batch_size
+        )
+        if resolved_max_batch_size <= 0:
+            raise RuntimeError("max_batch_size 必须大于 0。")
+        if resolved_max_batch_size < args.batch_size:
+            raise RuntimeError("max_batch_size 不能小于 batch_size。")
         if args.temperature < 0:
             raise RuntimeError("temperature 不能小于 0。")
         if args.adapter_path is not None and not args.adapter_path.exists():
@@ -117,6 +131,7 @@ class ToolCallEvalConfig:
             seed=args.seed,
             max_new_tokens=args.max_new_tokens,
             batch_size=args.batch_size,
+            max_batch_size=resolved_max_batch_size,
             bucket_by_length=args.bucket_by_length,
             temperature=args.temperature,
             sample_mode=args.sample_mode,
@@ -164,6 +179,7 @@ class ToolCallEvalConfig:
             "seed": self.seed,
             "max_new_tokens": self.max_new_tokens,
             "batch_size": self.batch_size,
+            "max_batch_size": self.max_batch_size,
             "bucket_by_length": self.bucket_by_length,
             "temperature": self.temperature,
             "sample_mode": self.sample_mode,
