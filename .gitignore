@@ -1,5 +1,7 @@
 /packges
 
+/outputs/lora_train_peft
+
 /data
 
 __pycache__/
