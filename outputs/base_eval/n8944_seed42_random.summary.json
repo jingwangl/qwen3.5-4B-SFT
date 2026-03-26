@@ -1,0 +1,21 @@
+{
+  "run_name": "n8944_seed42_random",
+  "model_type": "base",
+  "model_path": "/workspace/models/Qwen3.5-4B",
+  "base_model_path": "/workspace/models/Qwen3.5-4B",
+  "adapter_path": null,
+  "data_path": "/workspace/qwen3.5-4B-SFT/data/test.json",
+  "output_dir": "/workspace/qwen3.5-4B-SFT/outputs/base_eval",
+  "requested_num_samples": -1,
+  "resolved_num_samples": 8944,
+  "seed": 42,
+  "max_new_tokens": 512,
+  "batch_size": 4,
+  "bucket_by_length": true,
+  "temperature": 0.0,
+  "sample_mode": "random",
+  "dtype": "auto",
+  "num_examples": 8944,
+  "tool_selection_accuracy": 0.9532647584973166,
+  "call_accuracy": 0.7334525939177102
+}
