@@ -1,27 +1,26 @@
 import argparse
-import os
 import sys
 from pathlib import Path
 
-import numpy as np
 from transformers import AutoTokenizer
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from scripts.utils.common import load_json_file, save_json_file  # noqa: E402
-from scripts.utils.train_utils import build_full_text, build_prompt_text  # noqa: E402
-
-
-DEFAULT_INPUT_FILE = REPO_ROOT / "data" / "xlam_function_calling_60k.json"
-DEFAULT_MODEL_PATH = Path(
-    os.environ.get(
-        "QWEN_MODEL_PATH",
-        REPO_ROOT.parent / "models" / "Qwen3.5-4B",
-    )
+from scripts.common.project_paths import build_data_path, get_default_model_path  # noqa: E402
+from scripts.common.tool_call_dataset import (  # noqa: E402
+    build_full_text,
+    build_prompt_text,
+    extract_tool_call_sample_fields,
 )
-DEFAULT_OUTPUT_DIR = REPO_ROOT / "data" / "stats"
+from scripts.data_preprocess.common import build_length_stats, build_output_stem  # noqa: E402
+from scripts.utils.common import load_json_file, save_json_file  # noqa: E402
+
+
+DEFAULT_INPUT_FILE = build_data_path("xlam_function_calling_60k.json")
+DEFAULT_MODEL_PATH = Path(get_default_model_path())
+DEFAULT_OUTPUT_DIR = build_data_path("stats")
 
 
 def parse_args():
@@ -49,32 +48,13 @@ def parse_args():
 
 def get_answer_token_length(tokenizer, item):
     # 用完整对话长度减去 prompt 长度，更接近评测时需要的 max_new_tokens。
-    prompt_text = build_prompt_text(tokenizer, item)
-    full_text = build_full_text(tokenizer, item)
+    query, tools, answers = extract_tool_call_sample_fields(item)
+    prompt_text = build_prompt_text(tokenizer, query, tools)
+    full_text = build_full_text(tokenizer, query, tools, answers)
 
     prompt_ids = tokenizer(prompt_text, add_special_tokens=False)["input_ids"]
     full_ids = tokenizer(full_text, add_special_tokens=False)["input_ids"]
     return max(0, len(full_ids) - len(prompt_ids))
-
-
-def build_stats(lengths):
-    length_array = np.array(lengths)
-    return {
-        "num_samples": int(length_array.size),
-        "p50": float(np.percentile(length_array, 50)),
-        "p90": float(np.percentile(length_array, 90)),
-        "p95": float(np.percentile(length_array, 95)),
-        "p99": float(np.percentile(length_array, 99)),
-        "max": int(length_array.max()),
-    }
-
-
-def build_output_stem(input_file):
-    try:
-        relative_path = input_file.resolve().relative_to(REPO_ROOT)
-        return "_".join(relative_path.with_suffix("").parts)
-    except ValueError:
-        return input_file.stem
 
 
 def main():
@@ -105,7 +85,7 @@ def main():
                 "token_length": token_length,
             }
 
-    stats = build_stats([item["token_length"] for item in answer_lengths])
+    stats = build_length_stats([item["token_length"] for item in answer_lengths])
     stats["input_file"] = str(args.input_file)
     stats["model_path"] = str(args.model_path)
     stats["longest_answer"] = longest_item

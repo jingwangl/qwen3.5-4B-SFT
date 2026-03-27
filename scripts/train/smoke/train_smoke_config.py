@@ -1,35 +1,22 @@
 import argparse
-import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-
-REPO_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_SMOKE_DATA_DIR = REPO_ROOT / "data" / "smoke"
-DEFAULT_MODEL_PATH = os.environ.get(
-    "QWEN_MODEL_PATH",
-    str(REPO_ROOT.parent / "models" / "Qwen3.5-4B"),
+from scripts.common.project_paths import build_data_path, build_output_path, get_default_model_path
+from scripts.train.common.lora_train_config_utils import (
+    DEFAULT_TARGET_MODULES,
+    build_lora_train_summary,
+    parse_target_modules,
+    validate_lora_train_config,
 )
+
+DEFAULT_SMOKE_DATA_DIR = build_data_path("smoke")
+DEFAULT_MODEL_PATH = get_default_model_path()
 DEFAULT_TRAIN_FILE = DEFAULT_SMOKE_DATA_DIR / "train.json"
 DEFAULT_VAL_FILE = DEFAULT_SMOKE_DATA_DIR / "val.json"
-DEFAULT_OUTPUT_DIR = REPO_ROOT / "outputs" / "smoke_lora_train_peft"
-DEFAULT_TOKENIZED_CACHE_DIR = REPO_ROOT / "outputs" / "tokenized_cache"
-
-DEFAULT_TARGET_MODULES = (
-    "linear_attn.in_proj_qkv",
-    "linear_attn.in_proj_a",
-    "linear_attn.in_proj_b",
-    "linear_attn.in_proj_z",
-    "linear_attn.out_proj",
-    "self_attn.q_proj",
-    "self_attn.k_proj",
-    "self_attn.v_proj",
-    "self_attn.o_proj",
-    "mlp.gate_proj",
-    "mlp.up_proj",
-    "mlp.down_proj",
-)
+DEFAULT_OUTPUT_DIR = build_output_path("smoke_lora_train_peft")
+DEFAULT_TOKENIZED_CACHE_DIR = build_output_path("tokenized_cache")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -134,42 +121,8 @@ class TrainSmokeConfig:
 
     @classmethod
     def from_args(cls, args: argparse.Namespace) -> "TrainSmokeConfig":
-        # 在这里把命令行字符串整理好，主脚本里直接拿结构化配置用。
-        target_modules = tuple(
-            module.strip()
-            for module in args.target_modules.split(",")
-            if module.strip()
-        )
-        if not target_modules:
-            raise RuntimeError("target_modules 不能为空。")
-        if args.max_length <= 0:
-            raise RuntimeError("max_length 必须大于 0。")
-        if args.per_device_train_batch_size <= 0 or args.per_device_eval_batch_size <= 0:
-            raise RuntimeError("batch_size 必须大于 0。")
-        if args.gradient_accumulation_steps <= 0:
-            raise RuntimeError("gradient_accumulation_steps 必须大于 0。")
-        if args.num_epochs <= 0:
-            raise RuntimeError("num_epochs 必须大于 0。")
-        if args.log_steps <= 0:
-            raise RuntimeError("log_steps 必须大于 0。")
-        if args.evals_per_epoch <= 0:
-            raise RuntimeError("evals_per_epoch 必须大于 0。")
-        if args.save_steps < 0:
-            raise RuntimeError("save_steps 不能小于 0。")
-        if args.keep_last_k_checkpoints <= 0:
-            raise RuntimeError("keep_last_k_checkpoints 必须大于 0。")
-        if args.dataloader_num_workers < 0:
-            raise RuntimeError("dataloader_num_workers 不能小于 0。")
-        if args.dataloader_prefetch_factor <= 0:
-            raise RuntimeError("dataloader_prefetch_factor 必须大于 0。")
-        if not 0.0 <= args.warmup_ratio <= 1.0:
-            raise RuntimeError("warmup_ratio 需要在 [0, 1] 之间。")
-        if not 0.0 <= args.min_lr_ratio <= 1.0:
-            raise RuntimeError("min_lr_ratio 需要在 [0, 1] 之间。")
-        if args.max_grad_norm <= 0:
-            raise RuntimeError("max_grad_norm 必须大于 0。")
-
-        return cls(
+        # 这里把命令行字符串整理好，主脚本里直接拿结构化配置用。
+        config = cls(
             model_path=args.model_path,
             train_file=args.train_file,
             val_file=args.val_file,
@@ -198,42 +151,12 @@ class TrainSmokeConfig:
             lora_rank=args.lora_rank,
             lora_alpha=args.lora_alpha,
             lora_dropout=args.lora_dropout,
-            target_modules=target_modules,
+            target_modules=parse_target_modules(args.target_modules),
             fused_optimizer=args.fused_optimizer,
             compile_model=args.compile_model,
         )
+        validate_lora_train_config(config)
+        return config
 
     def build_summary(self) -> dict:
-        return {
-            "model_path": str(self.model_path),
-            "train_file": str(self.train_file),
-            "val_file": str(self.val_file),
-            "output_dir": str(self.output_dir),
-            "tokenized_cache_dir": str(self.tokenized_cache_dir),
-            "tokenized_cache": self.tokenized_cache,
-            "rebuild_tokenized_cache": self.rebuild_tokenized_cache,
-            "max_length": self.max_length,
-            "max_train_steps": self.max_train_steps,
-            "num_epochs": self.num_epochs,
-            "per_device_train_batch_size": self.per_device_train_batch_size,
-            "per_device_eval_batch_size": self.per_device_eval_batch_size,
-            "gradient_accumulation_steps": self.gradient_accumulation_steps,
-            "learning_rate": self.learning_rate,
-            "weight_decay": self.weight_decay,
-            "warmup_ratio": self.warmup_ratio,
-            "min_lr_ratio": self.min_lr_ratio,
-            "max_grad_norm": self.max_grad_norm,
-            "log_steps": self.log_steps,
-            "lora_rank": self.lora_rank,
-            "lora_alpha": self.lora_alpha,
-            "lora_dropout": self.lora_dropout,
-            "evals_per_epoch": self.evals_per_epoch,
-            "save_steps": self.save_steps,
-            "keep_last_k_checkpoints": self.keep_last_k_checkpoints,
-            "dataloader_num_workers": self.dataloader_num_workers,
-            "dataloader_prefetch_factor": self.dataloader_prefetch_factor,
-            "seed": self.seed,
-            "target_modules": list(self.target_modules),
-            "fused_optimizer": self.fused_optimizer,
-            "compile_model": self.compile_model,
-        }
+        return build_lora_train_summary(self)

@@ -1,16 +1,12 @@
 import argparse
-import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from scripts.common.project_paths import build_data_path, build_output_path, get_default_model_path
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_BASE_MODEL_PATH = os.environ.get(
-    "QWEN_MODEL_PATH",
-    str(REPO_ROOT.parent / "models" / "Qwen3.5-4B"),
-)
-DEFAULT_DATA_PATH = REPO_ROOT / "data" / "test.json"
-DEFAULT_OUTPUT_DIR = REPO_ROOT / "outputs" / "base_eval"
+DEFAULT_BASE_MODEL_PATH = get_default_model_path()
+DEFAULT_DATA_PATH = build_data_path("test.json")
+DEFAULT_OUTPUT_DIR = build_output_path("base_eval")
 
 
 @dataclass(frozen=True, slots=True)

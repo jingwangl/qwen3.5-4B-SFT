@@ -1,33 +1,20 @@
 import argparse
-import os
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from pathlib import Path
 
-
-REPO_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_MODEL_PATH = os.environ.get(
-    "QWEN_MODEL_PATH",
-    str(REPO_ROOT.parent / "models" / "Qwen3.5-4B"),
+from scripts.common.project_paths import build_data_path, build_output_path, get_default_model_path
+from scripts.train.common.lora_train_config_utils import (
+    DEFAULT_TARGET_MODULES,
+    build_lora_train_summary,
+    parse_target_modules,
+    validate_lora_train_config,
 )
-DEFAULT_TRAIN_FILE = REPO_ROOT / "data" / "train.json"
-DEFAULT_VAL_FILE = REPO_ROOT / "data" / "val.json"
-DEFAULT_OUTPUT_DIR = REPO_ROOT / "outputs" / "lora_train_peft"
-DEFAULT_TOKENIZED_CACHE_DIR = REPO_ROOT / "outputs" / "tokenized_cache"
 
-DEFAULT_TARGET_MODULES = (
-    "linear_attn.in_proj_qkv",
-    "linear_attn.in_proj_a",
-    "linear_attn.in_proj_b",
-    "linear_attn.in_proj_z",
-    "linear_attn.out_proj",
-    "self_attn.q_proj",
-    "self_attn.k_proj",
-    "self_attn.v_proj",
-    "self_attn.o_proj",
-    "mlp.gate_proj",
-    "mlp.up_proj",
-    "mlp.down_proj",
-)
+DEFAULT_MODEL_PATH = get_default_model_path()
+DEFAULT_TRAIN_FILE = build_data_path("train.json")
+DEFAULT_VAL_FILE = build_data_path("val.json")
+DEFAULT_OUTPUT_DIR = build_output_path("lora_train_peft")
+DEFAULT_TOKENIZED_CACHE_DIR = build_output_path("tokenized_cache")
 
 
 @dataclass(slots=True)
@@ -99,61 +86,17 @@ class TrainLoraConfig:
             lora_rank=args.lora_rank,
             lora_alpha=args.lora_alpha,
             lora_dropout=args.lora_dropout,
-            target_modules=_parse_target_modules(args.target_modules),
+            target_modules=parse_target_modules(args.target_modules),
             rebuild_tokenized_cache=args.rebuild_tokenized_cache,
         )
         config.validate()
         return config
 
     def validate(self) -> None:
-        positive_ints = {
-            "max_length": self.max_length,
-            "per_device_train_batch_size": self.per_device_train_batch_size,
-            "per_device_eval_batch_size": self.per_device_eval_batch_size,
-            "gradient_accumulation_steps": self.gradient_accumulation_steps,
-            "num_epochs": self.num_epochs,
-            "log_steps": self.log_steps,
-            "evals_per_epoch": self.evals_per_epoch,
-            "keep_last_k_checkpoints": self.keep_last_k_checkpoints,
-            "dataloader_prefetch_factor": self.dataloader_prefetch_factor,
-            "lora_rank": self.lora_rank,
-            "lora_alpha": self.lora_alpha,
-        }
-        for name, value in positive_ints.items():
-            if value <= 0:
-                raise RuntimeError(f"{name} 必须大于 0。")
-
-        non_negative_ints = {
-            "save_steps": self.save_steps,
-            "dataloader_num_workers": self.dataloader_num_workers,
-        }
-        for name, value in non_negative_ints.items():
-            if value < 0:
-                raise RuntimeError(f"{name} 不能小于 0。")
-
-        bounded_floats = {
-            "warmup_ratio": self.warmup_ratio,
-            "min_lr_ratio": self.min_lr_ratio,
-        }
-        for name, value in bounded_floats.items():
-            if not 0.0 <= value <= 1.0:
-                raise RuntimeError(f"{name} 需要在 [0, 1] 之间。")
-
-        if self.max_grad_norm <= 0:
-            raise RuntimeError("max_grad_norm 必须大于 0。")
-        if not self.target_modules:
-            raise RuntimeError("target_modules 不能为空。")
+        validate_lora_train_config(self)
 
     def build_summary(self) -> dict:
-        summary = asdict(self)
-        for key in ("train_file", "val_file", "output_dir", "tokenized_cache_dir"):
-            summary[key] = str(summary[key])
-        summary["target_modules"] = list(self.target_modules)
-        return summary
-
-
-def _parse_target_modules(raw_value: str) -> tuple[str, ...]:
-    return tuple(module.strip() for module in raw_value.split(",") if module.strip())
+        return build_lora_train_summary(self)
 
 
 def build_parser(defaults: TrainLoraConfig) -> argparse.ArgumentParser:

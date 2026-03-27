@@ -1,13 +1,17 @@
 import argparse
-import json
-import random
+import sys
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_TRAIN_FILE = REPO_ROOT / "data" / "train.json"
-DEFAULT_VAL_FILE = REPO_ROOT / "data" / "val.json"
-DEFAULT_OUTPUT_DIR = REPO_ROOT / "data" / "smoke"
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from scripts.common.project_paths import build_data_path
+from scripts.data_preprocess.common import load_dataset, sample_records, save_dataset
+
+DEFAULT_TRAIN_FILE = build_data_path("train.json")
+DEFAULT_VAL_FILE = build_data_path("val.json")
+DEFAULT_OUTPUT_DIR = build_data_path("smoke")
 
 
 def parse_args():
@@ -51,38 +55,21 @@ def parse_args():
     return parser.parse_args()
 
 
-def load_json(input_file):
-    with open(input_file, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-
-def sample_data(data, size, seed):
-    # 先打乱再截取，方便复现 smoke 数据。
-    sampled_data = data[:]
-    random.Random(seed).shuffle(sampled_data)
-    return sampled_data[:size]
-
-
-def save_json(data, output_file):
-    with open(output_file, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-
 def main():
     args = parse_args()
 
-    train_data = load_json(args.train_file)
-    val_data = load_json(args.val_file)
+    train_data = load_dataset(args.train_file)
+    val_data = load_dataset(args.val_file)
 
-    smoke_train_data = sample_data(train_data, args.train_size, args.seed)
-    smoke_val_data = sample_data(val_data, args.val_size, args.seed)
+    smoke_train_data = sample_records(train_data, args.train_size, args.seed)
+    smoke_val_data = sample_records(val_data, args.val_size, args.seed)
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
     smoke_train_file = args.output_dir / "train.json"
     smoke_val_file = args.output_dir / "val.json"
 
-    save_json(smoke_train_data, smoke_train_file)
-    save_json(smoke_val_data, smoke_val_file)
+    save_dataset(smoke_train_file, smoke_train_data)
+    save_dataset(smoke_val_file, smoke_val_data)
 
     print(f"训练集抽样: {len(smoke_train_data)} -> {smoke_train_file}")
     print(f"验证集抽样: {len(smoke_val_data)} -> {smoke_val_file}")

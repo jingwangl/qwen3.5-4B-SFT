@@ -5,9 +5,6 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import Any
 
-import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
-
 from scripts.utils.common import load_json_value
 
 
@@ -72,6 +69,8 @@ def choose_examples(
 def get_torch_dtype(name: str) -> Any:
     if name == "auto":
         return "auto"
+    import torch
+
     return getattr(torch, name)
 
 
@@ -298,7 +297,7 @@ def evaluate_tool_call_prediction(
     }
 
 
-def build_generation_prompt(tokenizer: AutoTokenizer, example: EvalExample) -> str:
+def build_generation_prompt(tokenizer: Any, example: EvalExample) -> str:
     messages = [{"role": "user", "content": example.query}]
     return tokenizer.apply_chat_template(
         messages,
@@ -309,7 +308,7 @@ def build_generation_prompt(tokenizer: AutoTokenizer, example: EvalExample) -> s
 
 
 def prepare_examples_for_batching(
-    tokenizer: AutoTokenizer,
+    tokenizer: Any,
     examples: list[EvalExample],
     bucket_by_length: bool,
 ) -> list[PreparedEvalItem]:
@@ -428,12 +427,14 @@ def build_dynamic_batches(
 
 
 def generate_batch(
-    tokenizer: AutoTokenizer,
-    model: AutoModelForCausalLM,
+    tokenizer: Any,
+    model: Any,
     prompts: list[str],
     max_new_tokens: int,
     temperature: float,
 ) -> tuple[list[tuple[str, list[dict[str, Any]]]], int]:
+    import torch
+
     model_device = next(model.parameters()).device
     inputs = tokenizer(prompts, return_tensors="pt", padding=True).to(model_device)
 

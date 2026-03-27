@@ -12,7 +12,12 @@ from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM
 
-from scripts.utils.common import load_json_file, load_json_value, save_json_file
+from scripts.common.tool_call_dataset import (
+    build_full_text,
+    build_prompt_text,
+    extract_tool_call_sample_fields,
+)
+from scripts.utils.common import load_json_file, save_json_file
 
 
 TOKENIZED_CACHE_VERSION = 1
@@ -58,34 +63,10 @@ class DatasetStats:
             max_seq_len=int(payload["max_seq_len"]),
         )
 
-
-def build_prompt_text(tokenizer, query: str, tools: Any) -> str:
-    return tokenizer.apply_chat_template(
-        [{"role": "user", "content": query}],
-        tools=tools,
-        tokenize=False,
-        add_generation_prompt=True,
-    )
-
-
-def build_full_text(tokenizer, query: str, tools: Any, answers: Any) -> str:
-    messages = [
-        {"role": "user", "content": query},
-        {"role": "assistant", "tool_calls": answers},
-    ]
-    return tokenizer.apply_chat_template(
-        messages,
-        tools=tools,
-        tokenize=False,
-        add_generation_prompt=False,
-    )
-
-
 def preprocess_item(tokenizer, item: Dict[str, Any], max_length: int) -> Optional[Dict[str, Any]]:
-    tools = load_json_value(item["tools"])
-    answers = load_json_value(item["answers"])
-    prompt_text = build_prompt_text(tokenizer, item["query"], tools)
-    full_text = build_full_text(tokenizer, item["query"], tools, answers)
+    query, tools, answers = extract_tool_call_sample_fields(item)
+    prompt_text = build_prompt_text(tokenizer, query, tools)
+    full_text = build_full_text(tokenizer, query, tools, answers)
 
     prompt_ids = tokenizer(
         prompt_text,

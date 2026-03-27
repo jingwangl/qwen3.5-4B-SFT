@@ -1,13 +1,10 @@
-from pathlib import Path
-
 from scripts.eval.common.tool_call_eval_config import (  # noqa: E402
     ToolCallEvalConfig,
     ToolCallEvalDefaults,
 )
+from scripts.common.project_paths import build_output_path
 
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_OUTPUT_DIR = REPO_ROOT / "outputs" / "base_eval"
+DEFAULT_OUTPUT_DIR = build_output_path("base_eval")
 
 
 class EvalBaseToolCallsConfig(ToolCallEvalConfig):

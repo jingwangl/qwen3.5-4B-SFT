@@ -1,14 +1,17 @@
-import os
+import sys
 from pathlib import Path
 
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-model_path = os.environ.get(
-    "QWEN_MODEL_PATH",
-    str(REPO_ROOT.parent / "models" / "Qwen3.5-4B"),
-)
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from scripts.common.project_paths import get_default_model_path  # noqa: E402
+
+
+model_path = get_default_model_path()
 
 print("Loading tokenizer...")
 tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
